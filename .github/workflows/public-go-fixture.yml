@@ -1,0 +1,47 @@
+name: Public Go toolchain fixture
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  go-fixture:
+    name: go-fixture (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - windows-2022
+          - windows-2025
+          - ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      GOTOOLCHAIN: local
+      GOPROXY: 'off'
+      GOSUMDB: 'off'
+    steps:
+      - name: Checkout only public repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Select Go 1.27 without dependency cache
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        with:
+          go-version: '1.27'
+          cache: false
+      - name: Verify toolchain and execute synthetic tests
+        shell: bash
+        working-directory: ci-fixtures/go
+        run: |
+          set -euo pipefail
+          version="$(go env GOVERSION)"
+          case "$version" in
+            go1.27*) ;;
+            *) echo "Unexpected Go version: $version"; exit 1 ;;
+          esac
+          go version
+          go test -count=1 -v ./...
