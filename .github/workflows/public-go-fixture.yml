@@ -2,6 +2,12 @@ name: Public Go toolchain fixture
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/public-go-fixture.yml'
+      - 'ci-fixtures/go/**'
 
 permissions:
   contents: read
