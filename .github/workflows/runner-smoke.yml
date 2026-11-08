@@ -1,0 +1,27 @@
+name: Public standard runner smoke
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  runner-smoke:
+    name: smoke (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-24.04
+          - windows-2022
+          - windows-2025
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 5
+    steps:
+      - name: Prove the job started
+        shell: bash
+        run: |
+          printf '%s\n' 'RUNNER_START_CONFIRMED'
+          printf 'RUNNER_OS=%s\n' "$RUNNER_OS"
+          printf 'RUNNER_ARCH=%s\n' "$RUNNER_ARCH"
