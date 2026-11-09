@@ -93,6 +93,18 @@ PY
 python3 "$SCRIPT_ROOT/hayabusa_event_receipt.py" --jsonl "$ROOT/results/first.jsonl" --input-sha256 "$INPUT_SHA256" --expected-records 9 --report "$ROOT/results/receipt-first.json"
 python3 "$SCRIPT_ROOT/hayabusa_event_receipt.py" --jsonl "$ROOT/results/second.jsonl" --input-sha256 "$INPUT_SHA256" --expected-records 9 --report "$ROOT/results/receipt-second.json"
 cmp -s "$ROOT/results/receipt-first.json" "$ROOT/results/receipt-second.json" || { echo 'linkage receipt not deterministic' >&2; exit 25; }
+# Persist only a SANITIZED reference index across public Ubuntu/Windows jobs.
+# Raw JSONL (including potential test message content) remains ephemeral.
+PUBLIC_INDEX_DIR="$RUNNER_TEMP/pcfm-ops043-public-index"
+if [[ -e "$PUBLIC_INDEX_DIR" ]]; then
+ echo 'Refusing preexisting public index directory' >&2; exit 26
+fi
+mkdir -p "$PUBLIC_INDEX_DIR"
+python3 "$SCRIPT_ROOT/public_evtx_reference_index.py" \
+  --jsonl "$ROOT/results/first.jsonl" \
+  --source-sha256 "$INPUT_SHA256" \
+  --output "$PUBLIC_INDEX_DIR/reference-index.json"
+printf 'PCFM_OPS043_PUBLIC_INDEX_ONLY=PASS\n'
 printf 'PCFM_HYBRID_LINKAGE_RECEIPT_REPRODUCIBLE=PASS\n'
 printf 'PCFM_HYBRID_INPUT_UNCHANGED=PASS sample_bytes=69632 sample_sha256=%s\n' "$INPUT_SHA256"
 printf 'PCFM_HYBRID_HAYABUSA_RELEASE_SHA256=%s\n' "$RELEASE_SHA256"
