@@ -1,0 +1,48 @@
+name: OPS053 pinned OTRF nested identifier metadata
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'ci-fixtures/source-review/ops053/**'
+      - '.github/workflows/ops053-otrf-nested-keys.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  nested-identifiers:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 7
+    steps:
+      - name: Checkout isolated source reviewer
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Test bounded key inventory and refusal cases
+        run: python3 -m unittest discover -v -s ci-fixtures/source-review/ops053 -p 'test_*.py'
+      - name: Download one pinned OTRF ZIP (max 2.5 MB)
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          curl --fail --location --silent --show-error --retry 2 --connect-timeout 15 --max-time 90 --max-filesize 2500000 \
+            --output "$RUNNER_TEMP/ops053-private.zip" \
+            'https://raw.githubusercontent.com/OTRF/Security-Datasets/d9d40ef123d2c87d5d3df28c96bcab4f0faccc87/datasets/atomic/windows/defense_evasion/host/cmd_wevtutil_modify_security_eventlog_path.zip'
+      - name: Validate SHA256/ZIP/JSON and emit aggregate counts only
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 ci-fixtures/source-review/ops053/ops053_nested_keys.py \
+            --zip "$RUNNER_TEMP/ops053-private.zip" \
+            --output "$RUNNER_TEMP/ops053-nested-metadata.json"
+      - name: Upload metadata without event values
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: ops053-otrf-nested-key-metadata
+          path: ${{ runner.temp }}/ops053-nested-metadata.json
+          if-no-files-found: error
+          retention-days: 7
+      - name: Remove original source ZIP
+        if: always()
+        shell: bash
+        run: rm -f -- "$RUNNER_TEMP/ops053-private.zip"
