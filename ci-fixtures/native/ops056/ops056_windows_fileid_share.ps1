@@ -61,10 +61,12 @@ public static class Ops056Native {
             int code=Marshal.GetLastWin32Error();
             if(attempted!=Invalid) {
                 CloseHandle(attempted);
-                throw new InvalidOperationException("DELETE unexpectedly succeeded");
+                // Attribute-only source HANDLE does not universally block
+                // DELETE access. Report, never infer TOCTOU protection.
+                return fs+"|DELETE_OPEN_SUCCEEDED_ATTR_ONLY";
             }
-            if(code!=32) throw new InvalidOperationException("Expected sharing violation 32, observed "+code);
-            return fs;
+            if(code!=32) throw new InvalidOperationException("Unexpected DELETE open error "+code);
+            return fs+"|SHARING_VIOLATION_32";
         } finally {
             if(b!=Invalid) CloseHandle(b);
             if(a!=Invalid) CloseHandle(a);
@@ -82,7 +84,8 @@ $dir = Join-Path $env:RUNNER_TEMP ('ops056-' + [guid]::NewGuid().ToString('N'))
 $receiptDir=Join-Path $env:RUNNER_TEMP 'ops056-receipt'
 try {
   [void](New-Item -ItemType Directory -Path $dir -ErrorAction Stop)
-  $fs=[Ops056Native]::Test($dir)
+  $result=[Ops056Native]::Test($dir)
+  $fs,$share=$result.Split('|')
   if(-not [Ops056Native]::MissingRejected((Join-Path $dir 'missing-child'))){throw 'missing directory accepted'}
   [void](New-Item -ItemType Directory -Path $receiptDir -Force -ErrorAction Stop)
   $receipt=[ordered]@{
@@ -92,7 +95,7 @@ try {
     os_version=[System.Environment]::OSVersion.Version.ToString()
     filesystem=$fs
     two_handles_fileid128_volume='OBSERVED_UNVERIFIED'
-    delete_open='ERROR_SHARING_VIOLATION_32'
+    delete_open=$share
     missing_directory='REJECTED'
     windows10_native='NOT_RUN'
     private_pc_touched=$false
@@ -103,7 +106,7 @@ try {
     production_deployment_gate='BLOCKED'
   }
   $receipt | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $receiptDir 'receipt.json') -Encoding utf8
-  Write-Host ("OPS056_NATIVE_PASS fs="+$fs+" handles=2 share_violation=32 Windows10=NOT_RUN")
+  Write-Host ("OPS056_NATIVE_OBSERVED fs="+$fs+" handles=2 delete_access="+$share+" Windows10=NOT_RUN")
 } finally {
   if(Test-Path -LiteralPath $dir){Remove-Item -LiteralPath $dir -Recurse -Force -ErrorAction Stop}
 }
