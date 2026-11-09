@@ -1,0 +1,30 @@
+name: Public Hayabusa offline EVTX fixture
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/hayabusa-offline-fixture.yml'
+      - 'ci-fixtures/hybrid/**'
+
+permissions:
+  contents: read
+
+jobs:
+  isolated-evtx:
+    name: pinned-Hayabusa public EVTX offline analysis
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout public fixture only
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Run pinned non-destructive public EVTX analysis
+        shell: bash
+        env:
+          GIT_TERMINAL_PROMPT: '0'
+        run: bash ci-fixtures/hybrid/hayabusa_offline_probe.sh
