@@ -1,0 +1,49 @@
+name: OPS048 pinned synthetic EVTX to Hayabusa RecordID linkage
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'ci-fixtures/hybrid/ops048/**'
+      - '.github/workflows/ops048-recordid-linkage.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  public-event-linkage:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout isolated public contract
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Verify lossless linkage contract with hostile synthetic rows
+        run: python3 -m unittest discover -v -s ci-fixtures/hybrid/ops048 -p 'test_*.py'
+      - name: Download pinned OPS047 windows-2022 public CI artifact
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: ops047-synthetic-native-evtx-windows-2022
+          path: ops048-upstream-windows-2022
+          repository: ${{ github.repository }}
+          run-id: 42630986537
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Download pinned OPS047 windows-2025 public CI artifact
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: ops047-synthetic-native-evtx-windows-2025
+          path: ops048-upstream-windows-2025
+          repository: ${{ github.repository }}
+          run-id: 42630986537
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Analyze pinned native EVTX offline, join RecordID without scoring
+        shell: bash
+        run: bash ci-fixtures/hybrid/ops048/ops048_run_public.sh
+      - name: Upload metadata-only linkage receipt
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: ops048-metadata-only-recordid-linkage
+          path: ${{ runner.temp }}/ops048-public-receipt/record-linkage.json
+          if-no-files-found: error
+          retention-days: 7
