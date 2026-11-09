@@ -1,0 +1,47 @@
+name: OPS052 pinned OTRF ZIP structure assessment
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'ci-fixtures/source-review/ops052/**'
+      - '.github/workflows/ops052-otrf-archive-review.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  otRF-source-review:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    steps:
+      - name: Checkout bounded public source-review code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Unit test malicious malformed ZIP and fake metrics
+        run: python3 -m unittest discover -v -s ci-fixtures/source-review/ops052 -p 'test_*.py'
+      - name: Download only one pinned public OTRF archive limit 2.5MB
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --silent --show-error --retry 2 --connect-timeout 15 --max-time 90 --max-filesize 2500000 \
+            --output "$RUNNER_TEMP/ops052-pinned-untrusted-source.zip" \
+            'https://raw.githubusercontent.com/OTRF/Security-Datasets/d9d40ef123d2c87d5d3df28c96bcab4f0faccc87/datasets/atomic/windows/defense_evasion/host/cmd_wevtutil_modify_security_eventlog_path.zip'
+      - name: Verify Git blob ZIP CRC and event schema emit metadata only
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 ci-fixtures/source-review/ops052/ops052_inspect.py \
+            --zip "$RUNNER_TEMP/ops052-pinned-untrusted-source.zip" \
+            --output "$RUNNER_TEMP/ops052-archive-meta.json"
+      - name: Archive only metadata never source ZIP or raw events
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: ops052-otrf-archive-meta-only
+          path: ${{ runner.temp }}/ops052-archive-meta.json
+          if-no-files-found: error
+          retention-days: 7
+      - name: Remove downloaded raw ZIP from ephemeral runner
+        if: always()
+        shell: bash
+        run: rm -f -- "$RUNNER_TEMP/ops052-pinned-untrusted-source.zip"
