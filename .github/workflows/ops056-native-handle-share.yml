@@ -1,0 +1,34 @@
+name: OPS056 public native FileIdInfo sharing
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'ci-fixtures/native/ops056/**'
+      - '.github/workflows/ops056-native-handle-share.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  native-fileid-sharing:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-2022, windows-2025]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 8
+    steps:
+      - name: Checkout generic public fixture
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Exercise Windows native reads and observed sharing control
+        shell: pwsh
+        run: ./ci-fixtures/native/ops056/ops056_windows_fileid_share.ps1
+      - name: Upload sanitized metadata only
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: ops056-native-fileid-${{ matrix.os }}
+          path: ${{ runner.temp }}/ops056-receipt/receipt.json
+          if-no-files-found: error
+          retention-days: 2
