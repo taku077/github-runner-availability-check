@@ -31,3 +31,31 @@ jobs:
         env:
           GIT_TERMINAL_PROMPT: '0'
         run: bash ci-fixtures/hybrid/hayabusa_offline_probe.sh
+      - name: Transfer only non-sensitive public event references
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: ops043-public-event-reference
+          path: ${{ runner.temp }}/pcfm-ops043-public-index/reference-index.json
+          if-no-files-found: error
+          retention-days: 1
+
+  independent-windows-evtx:
+    name: native Windows EVTX cross-check (public fixture only)
+    needs: isolated-evtx
+    runs-on: windows-2022
+    timeout-minutes: 10
+    steps:
+      - name: Checkout public repo only
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Download sanitized source references only
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: ops043-public-event-reference
+          path: ./ops043-public-reference
+      - name: Independently read public EVTX with Microsoft Get-WinEvent
+        shell: pwsh
+        run: |
+          & ./ci-fixtures/hybrid/compare_public_evtx_windows.ps1 -IndexPath ./ops043-public-reference/reference-index.json
