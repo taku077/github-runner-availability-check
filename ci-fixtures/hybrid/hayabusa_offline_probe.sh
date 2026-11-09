@@ -104,13 +104,16 @@ python3 "$SCRIPT_ROOT/public_evtx_reference_index.py" \
   --jsonl "$ROOT/results/first.jsonl" \
   --source-sha256 "$INPUT_SHA256" \
   --output "$PUBLIC_INDEX_DIR/reference-index.json"
-mapfile -t RULES_DIRS < <(find "$ROOT/pkg" -type d -name rules -print)
-if (( ${#RULES_DIRS[@]} != 1 )); then
- echo 'Expected exactly one extracted Hayabusa rules directory' >&2; exit 27
+# Hayabusa was executed from this exact directory, so use its own rules
+# subdirectory. A recursive search for any similarly named directory would
+# introduce ambiguity (and was rejected by the first OPS044 CI trial).
+RULES_DIR="$(dirname "$BIN")/rules"
+if [[ ! -d "$RULES_DIR" ]]; then
+ echo 'Pinned release does not have a sibling rules directory' >&2; exit 27
 fi
 python3 "$SCRIPT_ROOT/public_hayabusa_rule_provenance.py" \
   --jsonl "$ROOT/results/first.jsonl" \
-  --rules-dir "${RULES_DIRS[0]}" \
+  --rules-dir "$RULES_DIR" \
   --output "$PUBLIC_INDEX_DIR/rule-provenance.json"
 printf 'PCFM_OPS044_PUBLIC_RULE_AND_INPUT_DIGEST_ONLY=PASS\n'
 printf 'PCFM_OPS043_PUBLIC_INDEX_ONLY=PASS\n'
