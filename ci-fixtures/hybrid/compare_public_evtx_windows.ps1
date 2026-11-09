@@ -61,7 +61,7 @@ function Compare-References([object[]] $References, [hashtable] $Catalog) {
         }
         $deltaTicks = [math]::Abs([double]($when.UtcDateTime.Ticks - $original.utc_ticks))
         if ($deltaTicks -gt [TimeSpan]::TicksPerMillisecond) {
-            throw ("Timestamp mismatch beyond 1ms reporting precision; differenceSeconds={0}" -f ([math]::Round($deltaTicks / 10000000.0, 6)))
+            throw ("Timestamp mismatch in PUBLIC fixture: differenceSeconds={0}; hayabusaUTC={1}; nativeUTC={2}" -f ([math]::Round($deltaTicks / 10000000.0, 6)), $when.UtcDateTime.ToString("o"), ([datetime]::new([int64]$original.utc_ticks, [DateTimeKind]::Utc)).ToString("o"))
         }
         $matched++
     }
