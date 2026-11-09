@@ -14,7 +14,10 @@ New-Item -ItemType Directory -Path $receiptDir, $privateDir -Force | Out-Null
 $evtx = Join-Path $privateDir 'controlled-application.evtx'
 $receiptPath = Join-Path $receiptDir 'receipt.json'
 if ((Test-Path $evtx) -or (Test-Path $receiptPath)) { throw 'Existing output must not be overwritten' }
-$markers = @('PCFM_OPS046_BENIGN_' + $token + '_A', 'PCFM_OPS046_BENIGN_' + $token + '_B')
+$markers = [string[]]::new(2)
+$markers[0] = 'PCFM_OPS046_BENIGN_' + $token + '_A'
+$markers[1] = 'PCFM_OPS046_BENIGN_' + $token + '_B'
+if ($markers.Count -ne 2 -or $markers[0] -eq $markers[1]) { throw 'Invalid distinct marker setup' }
 foreach ($marker in $markers) {
     & eventcreate.exe /l APPLICATION /so $provider /t INFORMATION /id $eventId /d $marker | Out-Null
     if ($LASTEXITCODE -ne 0) { throw 'eventcreate failed' }
