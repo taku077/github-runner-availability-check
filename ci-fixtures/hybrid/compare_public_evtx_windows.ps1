@@ -40,6 +40,8 @@ function Assert-SameSourceHash([string] $FilePath) {
 
 function Compare-References([object[]] $References, [hashtable] $Catalog) {
     $matched = 0
+    $subsecondExact = 0
+    $wholeSecondOnly = 0
     foreach ($link in $References) {
         $recordId = [string][uint64]$link.record_id
         if (-not $Catalog.ContainsKey($recordId)) {
@@ -60,12 +62,29 @@ function Compare-References([object[]] $References, [hashtable] $Catalog) {
             throw "Report timestamp is not UTC"
         }
         $deltaTicks = [math]::Abs([double]($when.UtcDateTime.Ticks - $original.utc_ticks))
-        if ($deltaTicks -gt [TimeSpan]::TicksPerMillisecond) {
-            throw ("Timestamp mismatch in PUBLIC fixture: differenceSeconds={0}; hayabusaUTC={1}; nativeUTC={2}" -f ([math]::Round($deltaTicks / 10000000.0, 6)), $when.UtcDateTime.ToString("o"), ([datetime]::new([int64]$original.utc_ticks, [DateTimeKind]::Utc)).ToString("o"))
+        if ($deltaTicks -le [TimeSpan]::TicksPerMillisecond) {
+            $subsecondExact++
+        } else {
+            # Only acknowledge explicit whole-second truncation; do not claim exact
+            # timestamps or widen acceptance for arbitrary time shifts.
+            $reportedTicks = [int64]$when.UtcDateTime.Ticks
+            $nativeTicks = [int64]$original.utc_ticks
+            $secondTicks = [int64][TimeSpan]::TicksPerSecond
+            $reportedSecond = $reportedTicks - ($reportedTicks % $secondTicks)
+            $nativeSecond = $nativeTicks - ($nativeTicks % $secondTicks)
+            if (($reportedTicks % $secondTicks) -ne 0 -or
+                $reportedSecond -ne $nativeSecond) {
+                throw "Reported time differs beyond explicit whole-second truncation"
+            }
+            $wholeSecondOnly++
         }
         $matched++
     }
-    return $matched
+    return [pscustomobject]@{
+        matched = $matched
+        subsecond_exact = $subsecondExact
+        whole_second_only = $wholeSecondOnly
+    }
 }
 
 function Assert-Negative([string] $CaseName, [object] $BadReference,
@@ -116,8 +135,8 @@ try {
             utc_ticks = [int64]$instant.UtcDateTime.Ticks
         }
     }
-    $matched = Compare-References -References $refs -Catalog $catalog
-    if ($matched -ne 9) { throw "Independent match count mismatch" }
+    $comparison = Compare-References -References $refs -Catalog $catalog
+    if ($comparison.matched -ne 9) { throw "Independent match count mismatch" }
 
     # Deliberate mutation checks prove the join rejects forged references.
     $first = $refs[0]
@@ -137,7 +156,8 @@ try {
     Assert-Negative "Timestamp" $bad $refs $catalog
 
     Assert-SameSourceHash -FilePath $evtx
-    Write-Output ("PCFM_OPS043_INDEPENDENT_EVTX_PASS reported_alerts={0} matched={1} native_records={2} negative_cases=4 source_unchanged=true" -f $refs.Count, $matched, $independentEvents.Count)
+    Write-Output ("PCFM_OPS043_INDEPENDENT_RECORDS_MATCHED reported_alerts={0} matched={1} native_records={2} negative_cases=4 subsecond_exact={3} second_only={4} source_unchanged=true" -f $refs.Count, $comparison.matched, $independentEvents.Count, $comparison.subsecond_exact, $comparison.whole_second_only)
+    Write-Output "PCFM_OPS043_CONCLUSION=PARTIAL_INDEPENDENT_RECORD_MATCH_TIMESTAMP_PRECISION_UNVERIFIED"
     Write-Output "PCFM_OPS043_SCOPE=PUBLIC_SAMPLE_WINDOWS_2022_NOT_PC_OR_INDEPENDENT_RULE_VALIDATION"
 } finally {
     Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
