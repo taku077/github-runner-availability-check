@@ -1,0 +1,33 @@
+name: OPS046 Windows benign event provenance
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'ci-fixtures/hybrid/ops046/**'
+      - '.github/workflows/ops046-benign-events.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  windows-controlled-benign:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-2022, windows-2025]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Create known benign events and compare live versus native EVTX
+        shell: pwsh
+        run: ./ci-fixtures/hybrid/ops046/ops046_benign_events.ps1
+      - name: Retain metadata only, never raw EVTX
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: ops046-benign-${{ matrix.os }}_NAME
+          path: ${{ runner.temp }}/ops046-public-receipt/receipt.json
+          if-no-files-found: error
+          retention-days: 7
