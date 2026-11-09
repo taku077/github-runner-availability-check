@@ -13,7 +13,7 @@ case "$(uname -s)/$(uname -m)" in
   Linux/x86_64) ;;
   *) echo 'Only disposable Ubuntu x64 GitHub runner is supported' >&2; exit 20 ;;
 esac
-: "\${RUNNER_TEMP:?Requires a disposable GitHub-hosted runner}"
+: "${RUNNER_TEMP:?Requires a disposable GitHub-hosted runner}"
 ROOT="$(mktemp -d "$RUNNER_TEMP/pcfm-hybrid-fixture.XXXXXXXX")"
 trap 'rm -rf -- "$ROOT"' EXIT
 mkdir -p "$ROOT/pkg" "$ROOT/results"
@@ -43,11 +43,11 @@ PY
 authored_zip_guard
 unzip -q "$ROOT/hayabusa.zip" -d "$ROOT/pkg"
 mapfile -t matches < <(find "$ROOT/pkg" -type f -name 'hayabusa*lin*x64*gnu' -print)
-if (( \${#matches[@]} != 1 )); then
+if (( ${#matches[@]} != 1 )); then
  echo 'expected exactly one Linux GNU Hayabusa binary in release' >&2
  exit 21
 fi
-BIN="\${matches[0]}"
+BIN="${matches[0]}"
 chmod u+x "$BIN"
 
 curl -fLsS --retry 2 --connect-timeout 15 --max-time 60 "$SAMPLE_URL" -o "$ROOT/fixture.evtx"
