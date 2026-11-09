@@ -9,3 +9,5 @@ A valid ZIP and 100% successful parsing do not supply independent event-level tr
 Sources: https://docs.github.com/en/rest/repos/contents ; https://docs.github.com/en/rest/git/blobs ; https://securitydatasets.com/notebooks/atomic/windows/defense_evasion/SDWIN-220705170038.html
 
 Initial OPS052 Run 42641907290 verified the downloaded Git blob but failed closed on unexpected JSON serialization. Revised code accepts a JSON array or JSONL and records unknown serialization as INCOMPLETE_NOT_SCORABLE with null event counts; it never fabricates zero events or scores.
+
+Second CI Run 42642672176 verified ZIP SHA256 2ea34cf2d3526e30f9fe004fc4f53f8a04d8e6885e697d77c44102567279ac67 and CRC. One 48,978,066-byte JSONL member parsed, but a 120-byte non-UTF8 .json-named item made the aggregate count null. New guard explicitly recognizes only <=4KB AppleDouble / __MACOSX sidecars; other non-UTF8 JSON continues to block counting.

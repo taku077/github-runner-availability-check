@@ -48,6 +48,7 @@ def summarize(raw,expected_size=EXPECTED_BYTES,expected_blob=EXPECTED_BLOB):
     total_events=0
     json_candidates=0
     failures=[]
+    sidecars=0
     with zipfile.ZipFile(io.BytesIO(raw)) as z:
         entries=z.infolist()
         need(1<=len(entries)<=MAX_MEMBERS,"unexpected archive entries")
@@ -66,6 +67,13 @@ def summarize(raw,expected_size=EXPECTED_BYTES,expected_blob=EXPECTED_BLOB):
             names.add(n)
             suffix=p.suffix.lower()
             kind="UNKNOWN"
+            if (p.name.startswith("._") or "__MACOSX" in p.parts):
+                need(i.file_size<=4096,"oversized metadata-sidecar candidate")
+                sidecars+=1
+                kinds.append({"type":"MACOS_METADATA_SIDECAR_NOT_EVENT",
+                              "compressed_bytes":i.compress_size,
+                              "uncompressed_bytes":i.file_size})
+                continue
             if suffix in (".json",".jsonl",".ndjson"):
                 kind="JSON_LINES_OR_ARRAY"
                 json_candidates+=1
@@ -121,6 +129,7 @@ def summarize(raw,expected_size=EXPECTED_BYTES,expected_blob=EXPECTED_BLOB):
             "jsonl_event_objects":total_events if json_candidates>0 and not failures else None,
             "json_parse_status":"COMPLETE" if json_candidates>0 and not failures else "INCOMPLETE_NOT_SCORABLE",
             "json_parse_failure_codes":sorted(set(failures)),
+            "macos_metadata_sidecar_count":sidecars,
             "native_evtx_members":sum(x["type"]=="NATIVE_EVTX" for x in kinds),
             "field_name_presence_counts":counts if json_candidates>0 and not failures else None,
             "independent_ground_truth_event_count":0,

@@ -21,6 +21,19 @@ class ArchiveTests(unittest.TestCase):
         self.assertNotIn("x.json",json.dumps(r))
     def test_native_header(self):
         self.assertEqual(check(make([("x.evtx",b"ElfFile\0"+b"\0"*50)]))["native_evtx_members"],1)
+    def test_macos_sidecar_does_not_destroy_main_json_event_count(self):
+        z=make([("events.json",b'{"EventID":1}\n'),
+                ("__MACOSX/._events.json",b"\xff\x00\x80")])
+        out=check(z)
+        self.assertEqual(out["jsonl_event_objects"],1)
+        self.assertEqual(out["macos_metadata_sidecar_count"],1)
+        self.assertEqual(out["json_parse_status"],"COMPLETE")
+    def test_non_sidecar_bad_encoding_leaves_event_count_unknown(self):
+        z=make([("events.json",b'{"EventID":1}\n'),
+                ("unclassified.json",b"\xff\x00\x80")])
+        out=check(z)
+        self.assertIsNone(out["jsonl_event_objects"])
+        self.assertEqual(out["json_parse_status"],"INCOMPLETE_NOT_SCORABLE")
     def test_bad_git_sha(self):
         b=make([("x.json",b"{}\n")])
         with self.assertRaises(Rejected):summarize(b,len(b),"0"*40)
