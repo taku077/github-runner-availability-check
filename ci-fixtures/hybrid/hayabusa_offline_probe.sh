@@ -62,8 +62,8 @@ INPUT_SHA256="$(sha256sum "$ROOT/fixture.evtx" | awk '{print $1}')"
 # Only a public, fixed EVTX fixture is analyzed. It is never executed.
 # The release archive includes its own pinned rules, covered by its SHA-256.
 cd "$(dirname "$BIN")"
-timeout 180 "$BIN" dfir-timeline -f "$ROOT/fixture.evtx" -t jsonl -p verbose -o "$ROOT/results/first.jsonl" -w -s -U -q --threads 2
-timeout 180 "$BIN" dfir-timeline -f "$ROOT/fixture.evtx" -t jsonl -p verbose -o "$ROOT/results/second.jsonl" -w -s -U -q --threads 2
+timeout 180 "$BIN" dfir-timeline -f "$ROOT/fixture.evtx" -t jsonl -p verbose -b -o "$ROOT/results/first.jsonl" -w -s -U -q --threads 2
+timeout 180 "$BIN" dfir-timeline -f "$ROOT/fixture.evtx" -t jsonl -p verbose -b -o "$ROOT/results/second.jsonl" -w -s -U -q --threads 2
 cmp -s "$ROOT/fixture.evtx" "$ROOT/original.evtx" || { echo 'input EVTX was modified' >&2; exit 23; }
 [[ "$(sha256sum "$ROOT/fixture.evtx" | awk '{print $1}')" == "$INPUT_SHA256" ]] || exit 24
 
