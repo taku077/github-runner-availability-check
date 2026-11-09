@@ -35,7 +35,7 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: ops043-public-event-reference
-          path: ${{ runner.temp }}/pcfm-ops043-public-index/reference-index.json
+          path: ${{ runner.temp }}/pcfm-ops043-public-index/*.json
           if-no-files-found: error
           retention-days: 1
 
@@ -59,3 +59,10 @@ jobs:
         shell: pwsh
         run: |
           & ./ci-fixtures/hybrid/compare_public_evtx_windows.ps1 -IndexPath ./ops043-public-reference/reference-index.json
+      - name: Archive independently parsed public source XML timestamps
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: ops044-public-source-xml-times
+          path: ${{ runner.temp }}/pcfm-ops044-public-native-time/source-times.json
+          if-no-files-found: error
+          retention-days: 7
