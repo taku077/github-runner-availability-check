@@ -1,0 +1,34 @@
+name: OPS047 public synthetic native EVTX preservation
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'ci-fixtures/hybrid/ops047/**'
+      - '.github/workflows/ops047-native-evtx-preserve.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  windows-native-evtx:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-2022, windows-2025]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 8
+    steps:
+      - name: Checkout isolated public test code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Generate only two synthetic benign events and preserve filtered native EVTX
+        shell: pwsh
+        run: ./ci-fixtures/hybrid/ops047/ops047_preserve_native_evtx.ps1
+      - name: Upload bounded synthetic EVTX and matching receipt only
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: ops047-synthetic-native-evtx-${{ matrix.os }}
+          path: ${{ runner.temp }}/ops047-public-receipt/
+          if-no-files-found: error
+          retention-days: 2
