@@ -1,0 +1,42 @@
+name: OPS049 independent ground truth admission gate
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'ci-fixtures/groundtruth/ops049/**'
+      - '.github/workflows/ops049-ground-truth-gate.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  ground-truth-blocked-gate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Contract tests including forged labels and fake scores
+        run: python3 -m unittest discover -v -s ci-fixtures/groundtruth/ops049 -p 'test_*.py'
+      - name: Retrieve real OPS048 public metadata receipt
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: ops048-metadata-only-recordid-linkage
+          repository: ${{ github.repository }}
+          run-id: 42633504230
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: ops049-source
+      - name: Verify real evidence and emit BLOCKED admission decision
+        run: |
+          python3 ci-fixtures/groundtruth/ops049/ops049_admission.py \
+            --input ops049-source/record-linkage.json \
+            --output "${{ runner.temp }}/ops049-ground-truth-gate.json"
+      - name: Archive metadata-only qualification receipt
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: ops049-ground-truth-blocked-gate
+          path: ${{ runner.temp }}/ops049-ground-truth-gate.json
+          if-no-files-found: error
+          retention-days: 7
