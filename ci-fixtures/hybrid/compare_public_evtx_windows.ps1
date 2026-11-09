@@ -156,6 +156,48 @@ try {
     Assert-Negative "Timestamp" $bad $refs $catalog
 
     Assert-SameSourceHash -FilePath $evtx
+
+    # OPS044: independently preserve the source XML's 100ns-resolution UTC
+    # timestamp from the verified public EVTX; do not call it a confirmed
+    # incident time or pretend Hayabusa preserved the fractional seconds.
+    $nativeSourceRows = @()
+    foreach ($rid in @($catalog.Keys | Sort-Object { [uint64]$_ })) {
+        $eventInfo = $catalog[$rid]
+        $nativeSourceRows += [ordered]@{
+            record_id = [uint64]$rid
+            event_id = [int]$eventInfo.event_id
+            channel = [string]$eventInfo.channel
+            source_xml_system_time_utc = ([datetime]::new([int64]$eventInfo.utc_ticks,
+                [System.DateTimeKind]::Utc)).ToString("o", [System.Globalization.CultureInfo]::InvariantCulture)
+        }
+    }
+    if ($nativeSourceRows.Count -ne $independentEvents.Count) {
+        throw "Native source-time inventory count mismatch"
+    }
+    $nativeReceipt = [ordered]@{
+        schema = "pcfm-ops044-public-xml-source-times-v1"
+        status = "NATIVE_SOURCE_XML_TIME_PRESERVED_HAYABUSA_SUBSECOND_UNVERIFIED"
+        source_sha256 = $expectedSha
+        source_parser = "Microsoft Get-WinEvent -Path / EventRecord.ToXml SystemTime"
+        native_source_event_count = $nativeSourceRows.Count
+        hayabusa_reported_alerts = $refs.Count
+        matched_record_id_event_id_channel = $comparison.matched
+        exact_subsecond_time_match = $comparison.subsecond_exact
+        seconds_only_time_match = $comparison.whole_second_only
+        actual_user_incident_verified = $false
+        source_xml_events = @($nativeSourceRows)
+    }
+    $receiptDir = Join-Path $env:RUNNER_TEMP "pcfm-ops044-public-native-time"
+    if (Test-Path -LiteralPath $receiptDir) { throw "Refusing pre-existing native receipt directory" }
+    [void](New-Item -ItemType Directory -Path $receiptDir)
+    $receiptFile = Join-Path $receiptDir "source-times.json"
+    $jsonReceipt = ConvertTo-Json -InputObject $nativeReceipt -Depth 8 -Compress
+    [System.IO.File]::WriteAllText($receiptFile, ($jsonReceipt + "`n"),
+                                  [System.Text.UTF8Encoding]::new($false))
+    $receiptSha = (Get-FileHash -LiteralPath $receiptFile -Algorithm SHA256).Hash.ToLowerInvariant()
+    Write-Output ("PCFM_OPS044_NATIVE_SOURCE_XML_TIME_RECEIPT events={0} alerts={1} exact={2} second_only={3} receipt_sha256={4}" -f $nativeSourceRows.Count, $refs.Count, $comparison.subsecond_exact, $comparison.whole_second_only, $receiptSha)
+    Write-Output "PCFM_OPS044_TIME_SCOPE=PUBLIC_SOURCE_XML_TIME_ONLY_HAYABUSA_FRACTIONAL_MISMATCH_PRESERVED"
+
     Write-Output ("PCFM_OPS043_INDEPENDENT_RECORDS_MATCHED reported_alerts={0} matched={1} native_records={2} negative_cases=4 subsecond_exact={3} second_only={4} source_unchanged=true" -f $refs.Count, $comparison.matched, $independentEvents.Count, $comparison.subsecond_exact, $comparison.whole_second_only)
     Write-Output "PCFM_OPS043_CONCLUSION=PARTIAL_INDEPENDENT_RECORD_MATCH_TIMESTAMP_PRECISION_UNVERIFIED"
     Write-Output "PCFM_OPS043_SCOPE=PUBLIC_SAMPLE_WINDOWS_2022_NOT_PC_OR_INDEPENDENT_RULE_VALIDATION"
