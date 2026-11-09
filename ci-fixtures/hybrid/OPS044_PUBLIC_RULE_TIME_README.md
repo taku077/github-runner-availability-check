@@ -33,3 +33,22 @@ Official documentation:
 This public repo does not publish the private PCFM project or any user's
 original evidence. This test does not authorize EVTX export, ACL changes,
 software installation, permanent monitoring, or PCFM production deployment.
+
+
+## OPS044 precision correction (independent archive review)
+
+The byte-preserved public GitHub Actions artifact contains a Hayabusa-reported
+`timestamp_utc` such as `2021-04-29T09:23:54.244226+00:00`.
+The independently parsed Windows EVTX XML has
+`2021-04-29T09:23:54.2442261Z` for the same RecordID, a one-100ns-tick
+difference. The previous Windows comparator had read the JSON with default
+PowerShell `ConvertFrom-Json`, which converts ISO8601 strings to DateTime.
+Casting that DateTime back to `[string]` can discard the fractional portion,
+causing the *false* historical "second-only" classification.
+
+The comparator now requires PowerShell 7.5+ `-DateKind String` to retain the
+original JSON strings. With the public source index expressing microseconds
+(6 digits) and source XML expressing 100-nanosecond ticks (7 digits), accept
+a match only within **9 ticks (0.9 microseconds)**, with no claim of exact
+100ns equivalence. Reject unrelated time changes. This fixes a test-harness
+provenance error, not a demonstrated flaw in Hayabusa's timestamp output.
