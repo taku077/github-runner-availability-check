@@ -4,7 +4,8 @@ import tempfile
 import unittest
 
 from ops048_recordid_join import (
-    EXPECTED, Rejected, read_jsonl, evaluate, strict_uint, unique_pairs
+    EXPECTED, Rejected, read_jsonl, evaluate, strict_uint, unique_pairs,
+    verify_unadjudicated_truth
 )
 
 class RecordLinkageTests(unittest.TestCase):
@@ -69,6 +70,15 @@ class RecordLinkageTests(unittest.TestCase):
     def test_requires_both_sources(self):
         with self.assertRaises(Rejected):
             evaluate([{"source":{"case_id":"windows-2022"}}])
+
+    def test_real_ops047_false_truth_field_is_accepted(self):
+        verify_unadjudicated_truth({"independent_external_truth_adjudication": False})
+    def test_wrong_old_key_not_silently_accepted(self):
+        with self.assertRaises(Rejected):
+            verify_unadjudicated_truth({"external_independent_truth_adjudication": False})
+    def test_independent_truth_cannot_be_claimed(self):
+        with self.assertRaises(Rejected):
+            verify_unadjudicated_truth({"independent_external_truth_adjudication": True})
 
 if __name__ == "__main__":
     unittest.main()

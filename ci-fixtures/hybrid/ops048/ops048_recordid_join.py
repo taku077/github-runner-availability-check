@@ -66,6 +66,12 @@ def digest_file(path, max_size):
     return hashlib.sha256(path.read_bytes()).hexdigest(), path.stat().st_size
 
 
+def verify_unadjudicated_truth(receipt):
+    # OPS047's actual serialized key. Missing or truthy values must fail closed.
+    if receipt.get("independent_external_truth_adjudication") is not False:
+        raise Rejected("independent truth must be explicitly unverified")
+
+
 def validate_source(case_id, folder):
     if case_id not in EXPECTED:
         raise Rejected("unrecognized source case")
@@ -91,8 +97,7 @@ def validate_source(case_id, folder):
         raise Rejected("unrecognized export semantics")
     if receipt.get("raw_evtx_uploaded") is not True or receipt.get("artifact_copy_reopened_as_evtx") is not True:
         raise Rejected("upstream source custody not confirmed")
-    if receipt.get("external_independent_truth_adjudication") is not False:
-        raise Rejected("self-label independence guard violated")
+    verify_unadjudicated_truth(receipt)
     if receipt.get("detection_engine_run") is not False:
         raise Rejected("unexpected previous analyzer state")
     if any(receipt.get("metrics", {}).get(k, "MISSING") is not None for k in REPORT):
