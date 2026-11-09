@@ -14,6 +14,7 @@ case "$(uname -s)/$(uname -m)" in
   *) echo 'Only disposable Ubuntu x64 GitHub runner is supported' >&2; exit 20 ;;
 esac
 : "${RUNNER_TEMP:?Requires a disposable GitHub-hosted runner}"
+SCRIPT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(mktemp -d "$RUNNER_TEMP/pcfm-hybrid-fixture.XXXXXXXX")"
 trap 'rm -rf -- "$ROOT"' EXIT
 mkdir -p "$ROOT/pkg" "$ROOT/results"
@@ -61,8 +62,8 @@ INPUT_SHA256="$(sha256sum "$ROOT/fixture.evtx" | awk '{print $1}')"
 # Only a public, fixed EVTX fixture is analyzed. It is never executed.
 # The release archive includes its own pinned rules, covered by its SHA-256.
 cd "$(dirname "$BIN")"
-timeout 180 "$BIN" dfir-timeline -f "$ROOT/fixture.evtx" -t jsonl -o "$ROOT/results/first.jsonl" -w -s -U -q --threads 2
-timeout 180 "$BIN" dfir-timeline -f "$ROOT/fixture.evtx" -t jsonl -o "$ROOT/results/second.jsonl" -w -s -U -q --threads 2
+timeout 180 "$BIN" dfir-timeline -f "$ROOT/fixture.evtx" -t jsonl -p verbose -o "$ROOT/results/first.jsonl" -w -s -U -q --threads 2
+timeout 180 "$BIN" dfir-timeline -f "$ROOT/fixture.evtx" -t jsonl -p verbose -o "$ROOT/results/second.jsonl" -w -s -U -q --threads 2
 cmp -s "$ROOT/fixture.evtx" "$ROOT/original.evtx" || { echo 'input EVTX was modified' >&2; exit 23; }
 [[ "$(sha256sum "$ROOT/fixture.evtx" | awk '{print $1}')" == "$INPUT_SHA256" ]] || exit 24
 
@@ -87,6 +88,12 @@ if records[0] != records[1]:
     raise SystemExit('same-input analysis is not byte-reproducible')
 print('PCFM_HYBRID_PUBLIC_EVTX_PASS records=%d output_sha256=%s' % records[0])
 PY
+# Validate parser-reported evidence references without falsely claiming source-EVTX
+# verification. Two independent outputs must generate identical receipts.
+python3 "$SCRIPT_ROOT/hayabusa_event_receipt.py" --jsonl "$ROOT/results/first.jsonl" --input-sha256 "$INPUT_SHA256" --expected-records 9 --report "$ROOT/results/receipt-first.json"
+python3 "$SCRIPT_ROOT/hayabusa_event_receipt.py" --jsonl "$ROOT/results/second.jsonl" --input-sha256 "$INPUT_SHA256" --expected-records 9 --report "$ROOT/results/receipt-second.json"
+cmp -s "$ROOT/results/receipt-first.json" "$ROOT/results/receipt-second.json" || { echo 'linkage receipt not deterministic' >&2; exit 25; }
+printf 'PCFM_HYBRID_LINKAGE_RECEIPT_REPRODUCIBLE=PASS\n'
 printf 'PCFM_HYBRID_INPUT_UNCHANGED=PASS sample_bytes=69632 sample_sha256=%s\n' "$INPUT_SHA256"
 printf 'PCFM_HYBRID_HAYABUSA_RELEASE_SHA256=%s\n' "$RELEASE_SHA256"
 printf 'PCFM_HYBRID_SCOPE=PUBLIC_SAMPLE_ONLY_NO_USER_PC_NO_NATIVE_ACQUISITION\n'
