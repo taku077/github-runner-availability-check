@@ -27,7 +27,7 @@ jobs:
       - name: Retain metadata only, never raw EVTX
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: ops046-benign-${{ matrix.os }}_NAME
+          name: ops046-benign-${{ matrix.os }}
           path: ${{ runner.temp }}/ops046-public-receipt/receipt.json
           if-no-files-found: error
           retention-days: 7

@@ -24,7 +24,7 @@ $xpath = "*[System[Provider[@Name='$provider'] and EventID=$eventId]]"
 & wevtutil.exe epl Application $evtx "/q:$xpath" | Out-Null
 if ($LASTEXITCODE -ne 0 -or -not (Test-Path $evtx)) { throw 'wevtutil epl failed' }
 $archive = @(Get-WinEvent -Path $evtx -ErrorAction Stop)
-$items = @()
+$items = [System.Collections.Generic.List[object]]::new()
 foreach ($marker in $markers) {
     $a = @($live | Where-Object { $_.ToXml().Contains($marker) })
     $b = @($archive | Where-Object { $_.ToXml().Contains($marker) })
@@ -38,14 +38,16 @@ foreach ($marker in $markers) {
     $sha=[Security.Cryptography.SHA256]::Create()
     try { $hash=[Convert]::ToHexString($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes($marker))).ToLowerInvariant() }
     finally { $sha.Dispose() }
-    $items += [ordered]@{
+    $record = [pscustomobject][ordered]@{
         marker_sha256=$hash; record_id=[long]$y.RecordId
         event_id=[int]$y.Id; source=$y.ProviderName
         utc=$y.TimeCreated.ToUniversalTime().ToString('o')
         label='CONTROLLED_BENIGN_ACTION_ONLY'
         label_basis='EVENTCREATE_AND_LIVE_EXPORTED_IDENTITY'
     }
+    $items.Add($record)
 }
+Write-Output ('PCFM_OPS046_DIAG count=' + $items.Count + ' ids=' + (($items | ForEach-Object { $_.record_id }) -join ','))
 if ($items.Count -ne 2 -or $items[0].record_id -eq $items[1].record_id) { throw 'Expected two distinct events' }
 $f=Get-Item -LiteralPath $evtx
 if ($f.Length -lt 1) { throw 'Empty EVTX export' }
