@@ -1,0 +1,36 @@
+{
+  "id": "PCFM-OPS-057-20261110",
+  "run_id": 42672646861,
+  "classification": "PUBLIC_SYNTHETIC_WINDOWS_SERVER_CI_NOT_TARGET_PC_EVIDENCE",
+  "source_head": "dac182edf91f0d6ded134d04e5b8a2b13ccdbde6",
+  "created_from": "original GitHub Actions artifacts with local ZIP CRC and SHA-256 verification",
+  "independent_validation": {
+    "source_zip_hash_local": true,
+    "zip_crc": true,
+    "json_shape": true,
+    "github_blob_sha1_local": true,
+    "windows10_native": "NOT_RUN"
+  },
+  "artifacts": [
+    {
+      "os": "windows-2022",
+      "artifact_id": 13698767761,
+      "path": "evidence/ops057/windows-2022-metadata.zip",
+      "size_bytes": 637,
+      "zip_sha256": "dc6484b12865052b684ea93ad5bf6b10690eb33556211452704b201ef490b699",
+      "git_blob_sha1": "549d1a57ce8253590fb72c37c21246c69938164f",
+      "receipt_json_sha256": "f35088d6c5e1ec293cbbc39c213e8d91012d6afcbee51ee3d272681f342c3fd5"
+    },
+    {
+      "os": "windows-2025",
+      "artifact_id": 13699721316,
+      "path": "evidence/ops057/windows-2025-metadata.zip",
+      "size_bytes": 636,
+      "zip_sha256": "ae0d596b44b40f538e71c336a0f11acf1f9c94bb98cb2648d25d52d098a190c3",
+      "git_blob_sha1": "ec3251444caca8c8024110ca3e4dff869f7cc511",
+      "receipt_json_sha256": "8604b093df257249aad49b09b1b77c1a439a969f0daeb160cc7ba543a4a7c2e1"
+    }
+  ],
+  "production_deployment_gate": "BLOCKED",
+  "investigated_pc_touched": false
+}
