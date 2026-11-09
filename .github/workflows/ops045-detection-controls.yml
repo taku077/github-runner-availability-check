@@ -1,0 +1,32 @@
+name: OPS045 public detection control pilots
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'ci-fixtures/hybrid/ops045/**'
+      - '.github/workflows/ops045-detection-controls.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  public-two-scenarios:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout isolated public fixtures
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Test scorekeeping guardrails using controlled synthetic cases
+        run: python3 -m unittest discover -v -s ci-fixtures/hybrid/ops045 -p 'test_*.py'
+      - name: Analyze two pinned public attack-technique samples, retain entire baseline
+        shell: bash
+        run: bash ci-fixtures/hybrid/ops045/ops045_run_public.sh
+      - name: Retain metadata-only receipt for review
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: ops045-public-detection-control-receipt
+          path: ${{ runner.temp }}/ops045-public-receipt/detection-control.json
+          if-no-files-found: error
+          retention-days: 7
