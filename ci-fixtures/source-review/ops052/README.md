@@ -7,3 +7,5 @@ Raw ZIP, log lines, hostnames and event contents are never uploaded, published, 
 A valid ZIP and 100% successful parsing do not supply independent event-level truth. All TP/FP/FN/TN/precision/recall/FPR remain null; production deployment BLOCKED.
 
 Sources: https://docs.github.com/en/rest/repos/contents ; https://docs.github.com/en/rest/git/blobs ; https://securitydatasets.com/notebooks/atomic/windows/defense_evasion/SDWIN-220705170038.html
+
+Initial OPS052 Run 42641907290 verified the downloaded Git blob but failed closed on unexpected JSON serialization. Revised code accepts a JSON array or JSONL and records unknown serialization as INCOMPLETE_NOT_SCORABLE with null event counts; it never fabricates zero events or scores.

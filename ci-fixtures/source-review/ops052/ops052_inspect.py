@@ -46,6 +46,8 @@ def summarize(raw,expected_size=EXPECTED_BYTES,expected_blob=EXPECTED_BLOB):
     kinds=[]
     counts={key:0 for key in FIELDS}
     total_events=0
+    json_candidates=0
+    failures=[]
     with zipfile.ZipFile(io.BytesIO(raw)) as z:
         entries=z.infolist()
         need(1<=len(entries)<=MAX_MEMBERS,"unexpected archive entries")
@@ -65,27 +67,41 @@ def summarize(raw,expected_size=EXPECTED_BYTES,expected_blob=EXPECTED_BLOB):
             suffix=p.suffix.lower()
             kind="UNKNOWN"
             if suffix in (".json",".jsonl",".ndjson"):
-                kind="JSON_LINES"
-                with z.open(i) as stream:
-                    ct=0
-                    while True:
-                        line=stream.readline(MAX_LINE_BYTES+1)
-                        if not line:
-                            break
-                        need(len(line)<=MAX_LINE_BYTES,"JSON line too long")
-                        if not line.strip():
-                            continue
-                        try:
-                            obj=json.loads(line.decode("utf-8-sig"),object_pairs_hook=uniq)
-                        except (ValueError,UnicodeError) as exc:
-                            raise Rejected("invalid JSON Lines data") from exc
-                        need(type(obj) is dict,"JSON Lines object expected")
-                        ct+=1
-                        need(ct+total_events<=MAX_EVENTS,"event count exceeded budget")
-                        for key in FIELDS:
-                            counts[key]+=int(key in obj)
-                    need(ct>0,"empty JSONL")
-                total_events+=ct
+                kind="JSON_LINES_OR_ARRAY"
+                json_candidates+=1
+                raw_member=z.read(i)
+                try:
+                    content=raw_member.decode("utf-8-sig")
+                except UnicodeError:
+                    content=None
+                    code="JSON_ENCODING_UNVERIFIED"
+                if content is not None:
+                    try:
+                        if content.lstrip().startswith("["):
+                            objs=json.loads(content,object_pairs_hook=uniq)
+                            need(type(objs) is list,"JSON array expected")
+                        else:
+                            objs=[json.loads(line,object_pairs_hook=uniq)
+                                  for line in content.splitlines() if line.strip()]
+                        need(0<len(objs)<=MAX_EVENTS-total_events,"event count exceeds bound")
+                        need(all(type(obj) is dict for obj in objs),"event items must be JSON objects")
+                    except json.JSONDecodeError:
+                        code="JSON_SYNTAX_UNVERIFIED"
+                    except Rejected as err:
+                        if str(err)=="duplicate JSON key":
+                            code="JSON_DUPLICATE_KEYS_UNVERIFIED"
+                        else:
+                            raise
+                    else:
+                        ct=len(objs)
+                        for obj in objs:
+                            for key in FIELDS:
+                                counts[key]+=int(key in obj)
+                        total_events+=ct
+                        code="JSON_EVENTS_PARSED"
+                if code!="JSON_EVENTS_PARSED":
+                    kind="JSON_UNVERIFIED_NOT_COUNTED"
+                    failures.append(code)
             elif suffix==".evtx":
                 kind="NATIVE_EVTX"
                 with z.open(i) as stream:
@@ -102,9 +118,11 @@ def summarize(raw,expected_size=EXPECTED_BYTES,expected_blob=EXPECTED_BLOB):
             "source_git_blob_sha1":expected_blob,"source_git_object_verified":True,
             "source_bytes":len(raw),"source_sha256":hashlib.sha256(raw).hexdigest(),
             "zip_crc_verified":True,"member_count":len(kinds),"members":kinds,
-            "jsonl_event_objects":total_events,
+            "jsonl_event_objects":total_events if json_candidates>0 and not failures else None,
+            "json_parse_status":"COMPLETE" if json_candidates>0 and not failures else "INCOMPLETE_NOT_SCORABLE",
+            "json_parse_failure_codes":sorted(set(failures)),
             "native_evtx_members":sum(x["type"]=="NATIVE_EVTX" for x in kinds),
-            "field_name_presence_counts":counts,
+            "field_name_presence_counts":counts if json_candidates>0 and not failures else None,
             "independent_ground_truth_event_count":0,
             "attack_event_truth_adjudicated":False,
             "benign_event_truth_adjudicated":False,

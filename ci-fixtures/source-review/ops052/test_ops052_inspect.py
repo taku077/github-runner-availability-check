@@ -32,14 +32,21 @@ class ArchiveTests(unittest.TestCase):
     def test_duplicate_member(self):
         with self.assertRaises(Rejected):check(make([("x.json",b"{}\n"),("x.json",b"{}\n")]))
     def test_bad_json(self):
-        with self.assertRaises(Rejected):check(make([("x.json",b"{oops}\n")]))
+        r=check(make([("x.json",b"{oops}\n")]))
+        self.assertIsNone(r["jsonl_event_objects"])
+        self.assertEqual(r["json_parse_status"],"INCOMPLETE_NOT_SCORABLE")
     def test_duplicate_json_keys(self):
-        with self.assertRaises(Rejected):check(make([("x.json",b'{"a":1,"a":2}\n')]))
+        r=check(make([("x.json",b'{"a":1,"a":2}\n')]))
+        self.assertIn("JSON_DUPLICATE_KEYS_UNVERIFIED",r["json_parse_failure_codes"])
+    def test_json_array(self):
+        r=check(make([("array.json",b'[{"EventID":1},{"EventID":2}]')]))
+        self.assertEqual(r["jsonl_event_objects"],2)
+        self.assertEqual(r["json_parse_status"],"COMPLETE")
     def test_invalid_evtx_magic(self):
         with self.assertRaises(Rejected):check(make([("x.evtx",b"NOTEVTX")]))
     def test_unknown_not_assumed_event(self):
         r=check(make([("x.txt",b"random")]))
-        self.assertEqual(r["jsonl_event_objects"],0)
+        self.assertIsNone(r["jsonl_event_objects"])
         self.assertEqual(r["members"][0]["type"],"OTHER_NOT_ANALYZED")
     def test_no_false_positive_rate(self):
         r=check(make([("attack.json",b'{"EventID":1}\n')]))
