@@ -63,7 +63,13 @@ jobs:
           rid = matches[0]['id']
           detail = github_json('/rulesets/' + str(rid))
           assert detail['conditions']['ref_name']['include'] == ['~DEFAULT_BRANCH'], 'Wrong branch target'
-          assert detail.get('bypass_actors') == [], 'Unexpected bypass actor'
+          # The low-privilege GITHUB_TOKEN may omit bypass_actors entirely.
+          # Unknown is NOT an empty list; require independent privileged readback.
+          bypass_visible = 'bypass_actors' in detail
+          if bypass_visible:
+              assert detail['bypass_actors'] == [], 'Unexpected bypass actor'
+          else:
+              print('ENV003_BYPASS_LIST_NOT_VISIBLE: independent readback required')
           types = {rule['type'] for rule in detail['rules']}
           assert {'pull_request', 'deletion', 'non_fast_forward'} <= types, 'Required restrictions missing'
           for rule in detail['rules']:
@@ -99,7 +105,8 @@ jobs:
           # Public metadata only. No private source, credentials, or forensic records.
           print('ENV003_RULESET_METADATA_PASS')
           print('repository=' + repo + ' main_sha=' + head_sha[:12])
-          print('ruleset_id=' + str(rid) + ' enforcement=active bypass=[]')
+          print('ruleset_id=' + str(rid) + ' enforcement=active bypass=' +
+                ('[]' if bypass_visible else 'NOT_VERIFIED_BY_CI'))
           print('synthetic_gate_allow=1 synthetic_gate_denied=' + str(len(attacks)))
-          print('NOTE: CI success is not independent write prevention or proof of actor identity.')
+          print('ADMISSION=NOT_ACCEPTED: CI success is not independent write prevention or proof of actor identity.')
           PY
