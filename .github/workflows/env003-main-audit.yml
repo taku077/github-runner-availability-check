@@ -3,8 +3,6 @@ name: ENV003 public main ruleset audit
 on:
   pull_request:
     branches: [main]
-    paths:
-      - '.github/workflows/env003-main-audit.yml'
   workflow_dispatch:
 
 permissions:
