@@ -1,0 +1,28 @@
+name: SEC142 isolated independent-app decision prototype preview
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+# UNTRUSTED PR PREVIEW ONLY. This cannot attest an independent GitHub App.
+permissions:
+  contents: read
+
+jobs:
+  sec142-prototype-tests:
+    name: sec142-prototype-tests-not-a-required-gate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 4
+    steps:
+      - name: Checkout untrusted PR prototype with no persisted credentials
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Standard-library synthetic tests
+        run: python3 -m unittest discover -s security/sec142 -p 'test_*.py' -v
+      - name: Explicit enforcement boundary
+        run: |
+          echo "SEC142_SYNTHETIC_ONLY=TRUE"
+          echo "SEC142_EXTERNAL_GITHUB_APP_DEPLOYED=FALSE"
+          echo "SEC142_INDEPENDENT_ENFORCEMENT=NOT_ACCEPTED"
