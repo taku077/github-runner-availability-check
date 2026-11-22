@@ -1,0 +1,277 @@
+name: ENV004 public provenance observer
+
+on:
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '17 23 * * *'
+  workflow_dispatch:
+
+# No checkout. No secrets. No repo writes. PR checks are untrusted previews only.
+# Default-branch schedule/dispatch runs are read-only observers after merge.
+# GitHub's 2026-12-02 public-repository event policy needs no exception.
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  env004-public-provenance:
+    name: env004-public-provenance
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    steps:
+      - name: Verify policy and record public PR metadata
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          import sys
+          import urllib.request
+          from urllib.parse import quote
+
+          repo = os.environ['GITHUB_REPOSITORY']
+          event = os.environ['GITHUB_EVENT_NAME']
+          actor = os.environ['GITHUB_ACTOR']
+          if repo != 'taku077/github-runner-availability-check':
+              raise SystemExit('DENY: unexpected repository')
+          if event not in ('pull_request', 'workflow_dispatch', 'schedule'):
+              raise SystemExit('DENY: unexpected event')
+
+          def classify_observer(event_name, run_ref):
+              if event_name == 'pull_request':
+                  return 'PR_CODE_UNTRUSTED_PREVIEW'
+              if event_name in ('workflow_dispatch', 'schedule'):
+                  if run_ref != 'refs/heads/main':
+                      raise SystemExit(
+                          'DENY: default-branch observer requires refs/heads/main')
+                  return 'DEFAULT_BRANCH_READ_ONLY_OBSERVER'
+              raise SystemExit('DENY: unexpected event')
+
+          run_ref = os.environ.get('GITHUB_REF', '')
+          observer_mode = classify_observer(event, run_ref)
+          assert classify_observer('workflow_dispatch', 'refs/heads/main') == (
+              'DEFAULT_BRANCH_READ_ONLY_OBSERVER')
+          assert classify_observer('schedule', 'refs/heads/main') == (
+              'DEFAULT_BRANCH_READ_ONLY_OBSERVER')
+          assert classify_observer('pull_request', 'refs/pull/2/merge') == (
+              'PR_CODE_UNTRUSTED_PREVIEW')
+          for negative_event in ('schedule', 'workflow_dispatch'):
+              for negative_ref in ('', 'refs/heads/feature', 'refs/tags/v1',
+                                   'refs/pull/2/merge'):
+                  try:
+                      classify_observer(negative_event, negative_ref)
+                  except SystemExit:
+                      pass
+                  else:
+                      raise AssertionError('Non-main default observer permitted')
+
+          def get_json(path):
+              if not path.startswith('/') or '..' in path:
+                  raise ValueError('Invalid API path')
+              request = urllib.request.Request(
+                  'https://api.github.com/repos/' + repo + path,
+                  headers={
+                      'Accept': 'application/vnd.github+json',
+                      'X-GitHub-Api-Version': '2022-11-28',
+                      'Authorization': 'Bearer ' + os.environ['GH_TOKEN'],
+                      'User-Agent': 'pcfm-env004-readonly',
+                  },
+              )
+              with urllib.request.urlopen(request, timeout=15) as response:
+                  raw = response.read(1_000_001)
+              if len(raw) > 1_000_000:
+                  raise ValueError('API result exceeds limit')
+              return json.loads(raw)
+
+          def full_sha(value):
+              return (type(value) is str and len(value) == 40 and
+                      all(char in '0123456789abcdef' for char in value))
+
+          def validated_pr_revision(payload, live, number):
+              # The webhook event is a historical observation; the REST PR
+              # response is live. Never attach a stale run to a newer PR head.
+              if type(number) is not int or number <= 0:
+                  raise SystemExit('DENY: invalid pull request number')
+              if not isinstance(payload, dict) or not isinstance(live, dict):
+                  raise SystemExit('DENY: invalid PR metadata')
+              if payload.get('number') != number or live.get('number') != number:
+                  raise SystemExit('DENY: PR number mismatch')
+              try:
+                  event_pr = payload['pull_request']
+                  event_head = event_pr['head']['sha']
+                  live_head = live['head']['sha']
+                  event_base = event_pr['base']
+                  live_base = live['base']
+                  event_base_sha = event_base['sha']
+                  live_base_sha = live_base['sha']
+                  event_base_repo = event_base['repo']['full_name']
+                  live_base_repo = live_base['repo']['full_name']
+              except (TypeError, KeyError):
+                  raise SystemExit('DENY: incomplete PR identity metadata')
+              if not all(full_sha(sha) for sha in
+                         (event_head, live_head, event_base_sha, live_base_sha)):
+                  raise SystemExit('DENY: invalid PR revision SHA')
+              if event_head != live_head or event_base_sha != live_base_sha:
+                  raise SystemExit('DENY: PR revision changed during audit')
+              if (event_base.get('ref') != 'main' or
+                      live_base.get('ref') != 'main' or
+                      event_base_repo != repo or live_base_repo != repo):
+                  raise SystemExit('DENY: unexpected PR base identity')
+              return event_head, event_base_sha
+
+          # Pure offline negative cases: no GitHub write or sensitive data.
+          synthetic_head = 'a' * 40
+          synthetic_base = 'b' * 40
+          synthetic_payload = {
+              'number': 2,
+              'pull_request': {
+                  'head': {'sha': synthetic_head},
+                  'base': {'sha': synthetic_base, 'ref': 'main',
+                           'repo': {'full_name': repo}}
+              }
+          }
+          synthetic_live = {
+              'number': 2, 'head': {'sha': synthetic_head},
+              'base': {'sha': synthetic_base, 'ref': 'main',
+                       'repo': {'full_name': repo}}
+          }
+          assert validated_pr_revision(synthetic_payload, synthetic_live, 2) == (
+              synthetic_head, synthetic_base)
+          for variant in ('head_changed', 'base_changed', 'wrong_repo',
+                          'wrong_number', 'invalid_sha', 'missing_event_pr'):
+              event_case = json.loads(json.dumps(synthetic_payload))
+              live_case = json.loads(json.dumps(synthetic_live))
+              if variant == 'head_changed':
+                  live_case['head']['sha'] = 'c' * 40
+              elif variant == 'base_changed':
+                  live_case['base']['sha'] = 'c' * 40
+              elif variant == 'wrong_repo':
+                  live_case['base']['repo']['full_name'] = 'other/repo'
+              elif variant == 'wrong_number':
+                  live_case['number'] = 3
+              elif variant == 'invalid_sha':
+                  event_case['pull_request']['head']['sha'] = 'not-a-sha'
+              else:
+                  del event_case['pull_request']
+              try:
+                  validated_pr_revision(event_case, live_case, 2)
+              except SystemExit:
+                  pass
+              else:
+                  raise AssertionError('PR snapshot mismatch accepted: ' + variant)
+
+          execution_sha = os.environ.get('GITHUB_SHA', '')
+          if not full_sha(execution_sha):
+              raise SystemExit('DENY: invalid workflow execution SHA')
+
+          branch = get_json('/branches/main')
+          if branch.get('protected') is not True:
+              raise SystemExit('DENY: main protection missing')
+          main_sha = branch['commit']['sha']
+          if len(main_sha) != 40:
+              raise SystemExit('DENY: invalid main SHA')
+
+          rulesets = get_json('/rulesets')
+          named = [x for x in rulesets
+                   if x.get('name') == 'PCFM-Public-CI-Main-Protection'
+                   and x.get('target') == 'branch'
+                   and x.get('enforcement') == 'active']
+          if len(named) != 1:
+              raise SystemExit('DENY: expected ruleset missing')
+          detail = get_json('/rulesets/' + str(named[0]['id']))
+          if detail.get('conditions', {}).get('ref_name', {}).get('include') != ['~DEFAULT_BRANCH']:
+              raise SystemExit('DENY: default-branch scope changed')
+          types = {x['type'] for x in detail.get('rules', [])}
+          required = {'pull_request', 'deletion', 'non_fast_forward'}
+          if not required.issubset(types):
+              raise SystemExit('DENY: ruleset restrictions missing')
+          bypass = detail.get('bypass_actors', 'NOT_VISIBLE')
+          if bypass != 'NOT_VISIBLE' and bypass != []:
+              raise SystemExit('DENY: bypass entries appeared')
+
+          receipt = {
+              'schema': 'pcfm-public-provenance-v1',
+              'event': event,
+              'workflow_ref': run_ref,
+              'workflow_execution_sha': execution_sha,
+              'github_actor_account': actor,
+              'main_sha': main_sha,
+              'ruleset_id': named[0]['id'],
+              'ruleset_enforcement': detail['enforcement'],
+              'bypass_observation': bypass,
+              'source_warning': 'GitHub account attribution is not human identity',
+              'no_private_data': True,
+          }
+          high_risk = []
+          if event == 'pull_request':
+              event_path = os.environ.get('GITHUB_EVENT_PATH', '')
+              with open(event_path, encoding='utf-8') as stream:
+                  payload = json.load(stream)
+              number = payload.get('number')
+              if type(number) is not int or number <= 0:
+                  raise SystemExit('DENY: invalid pull request number')
+              if run_ref != 'refs/pull/' + str(number) + '/merge':
+                  raise SystemExit('DENY: unexpected PR workflow ref')
+              pr = get_json('/pulls/' + str(number))
+              event_head, event_base = validated_pr_revision(payload, pr, number)
+              receipt['pr_number'] = number
+              receipt['pr_head_sha'] = event_head
+              receipt['pr_base_sha'] = event_base
+              receipt['pr_author_account'] = pr['user']['login']
+              paths = []
+              # Fail closed on unexpectedly large PRs; never silently truncate.
+              for page in range(1, 7):
+                  files = get_json('/pulls/' + str(number) +
+                                   '/files?per_page=100&page=' + str(page))
+                  if not isinstance(files, list):
+                      raise SystemExit('DENY: malformed PR file listing')
+                  paths.extend(x['filename'] for x in files)
+                  if len(files) < 100:
+                      break
+              else:
+                  raise SystemExit('DENY: PR changed-file limit exceeded')
+              if len(paths) != len(set(paths)):
+                  raise SystemExit('DENY: duplicate filename metadata')
+              if type(pr.get('changed_files')) is not int or len(paths) != pr['changed_files']:
+                  raise SystemExit('DENY: PR files changed or incomplete')
+              pr_after = get_json('/pulls/' + str(number))
+              validated_pr_revision(payload, pr_after, number)
+              if pr_after['changed_files'] != len(paths):
+                  raise SystemExit('DENY: PR changed during file enumeration')
+              receipt['file_count'] = len(paths)
+              receipt['file_path_digest_sha256'] = hashlib.sha256(
+                  ('\n'.join(sorted(paths)) + '\n').encode('utf-8')
+              ).hexdigest()
+              high_risk = [p for p in paths if p.startswith('.github/workflows/')]
+              receipt['workflow_change_count'] = len(high_risk)
+              # Never emit private filenames or PR content into public outputs.
+              if high_risk:
+                  receipt['workflow_changes_require_manual_review'] = True
+
+          # Deterministic synthetic tests: no tool write, no privileged approval.
+          def synthetic_policy(source, operation):
+              return source == 'independent-review-confirmed' and operation == 'offline-read'
+          assert synthetic_policy('independent-review-confirmed', 'offline-read')
+          for case in [
+              ('untrusted-document', 'offline-read'),
+              ('unknown-chat', 'write-file'),
+              ('independent-review-confirmed', 'merge'),
+              ('independent-review-confirmed', 'disable-audit'),
+              ('provider-tool-text', 'private-ci-diagnosis'),
+          ]:
+              assert not synthetic_policy(*case)
+          receipt['synthetic_denied'] = 5
+          receipt['synthetic_allowed'] = 1
+          receipt['enforcement_caveat'] = 'synthetic policy is not a live tool gate'
+          receipt['audit_storage_caveat'] = 'GitHub Actions logs are not independent immutable evidence'
+          receipt['observer_mode'] = observer_mode
+          print('ENV004_PROVENANCE_RECEIPT=' +
+                json.dumps(receipt, sort_keys=True, separators=(',', ':')))
+          if high_risk and event == 'pull_request':
+              print('ENV004_PREVIEW_ONLY: workflow changes require trusted-base check')
+          print('ENV004_READ_ONLY_AUDIT_PASS')
+          PY
