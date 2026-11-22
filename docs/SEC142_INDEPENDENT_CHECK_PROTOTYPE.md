@@ -251,3 +251,45 @@ PR-controlled green CI must never be considered the independent authority.
 GitHub sources:
 https://docs.github.com/en/rest/checks/runs
 https://docs.github.com/en/rest/using-the-rest-api/using-pagination-in-the-rest-api
+
+## SEC-150 — GitHub App / installation / token scope provenance preflight (offline only)
+
+New files: `security/sec142/installation_scope.py` and
+`test_installation_scope.py`. A conservative source-only validator compares
+**caller-supplied, normalized metadata receipts** corresponding to JWT
+`GET /app`, JWT `GET /app/installations/{id}`, installation-token
+`GET /installation/repositories`, and JWT
+`POST /app/installations/{id}/access_tokens`. It requires the independent
+App ID and installation ID (hypothetically pinned by an external operator),
+verified structural consistency with the real public PCFM repository ID
+`1450293513`, owner ID `344928446`, exact sole-repository selection,
+no suspension, and exactly `checks:write`, `pull_requests:read`, and
+`metadata:read` permissions at App, installation, and token levels.
+
+For token metadata, it rejects invalid UTC expiry and claims outside a
+local two-minute-to-one-hour operating window. The host must **remove**
+any bearer token or private key: this interface rejects raw credential keys,
+and tests use invented App and installation IDs only. Method/path/status/
+credential-kind labels are also compared, but every one of these fields is
+caller-supplied and can be forged. A passing fixture returns exclusively
+`SYNTHETIC_SCOPE_MATCH_NOT_AUTHORIZED` with all authentication,
+independent operator, check-publishing and merge-authorization flags
+set to false. No real App is created, no JWT is signed, no API or token
+is called or recorded, and no check is issued.
+
+The non-atomic multi-endpoint inspection and caller-supplied observation
+clock can never prove that the App holds or was authorized to use credentials.
+A real deployment requires a separate externally governed host and protected
+private key, independently signed/pinned trusted policy and operator approval,
+live JWT/installation token authentication, externally controlled REST client,
+installation suspension/permission drift checks, expiry and revocation
+handling, crash/recovery testing, and an actual owner-authorized Ruleset
+rejection demonstration. This PR is untrusted and remains Draft/unmerged.
+The private CI track is PAUSED; production PCFM and independent gate are BLOCKED.
+
+GitHub official references:
+- https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/authenticating-as-a-github-app-installation
+- https://docs.github.com/en/rest/apps/apps
+- https://docs.github.com/en/rest/apps/installations
+- https://docs.github.com/en/apps/creating-github-apps/about-creating-github-apps/best-practices-for-creating-a-github-app
+- https://docs.github.com/en/rest/checks/runs
