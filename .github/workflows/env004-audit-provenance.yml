@@ -3,14 +3,13 @@ name: ENV004 public provenance observer
 on:
   pull_request:
     branches: [main]
-  pull_request_target:
-    types: [opened, synchronize, reopened, ready_for_review]
-    branches: [main]
   schedule:
     - cron: '17 23 * * *'
   workflow_dispatch:
 
-# No checkout. No secrets. No repo writes. pull_request_target executes base-branch code.
+# No checkout. No secrets. No repo writes. PR checks are untrusted previews only.
+# Default-branch schedule/dispatch runs are read-only observers after merge.
+# GitHub's 2026-12-02 public-repository event policy needs no exception.
 permissions:
   contents: read
   pull-requests: read
@@ -39,8 +38,7 @@ jobs:
           actor = os.environ['GITHUB_ACTOR']
           if repo != 'taku077/github-runner-availability-check':
               raise SystemExit('DENY: unexpected repository')
-          if event not in ('pull_request', 'pull_request_target',
-                           'workflow_dispatch', 'schedule'):
+          if event not in ('pull_request', 'workflow_dispatch', 'schedule'):
               raise SystemExit('DENY: unexpected event')
 
           def get_json(path):
@@ -98,7 +96,7 @@ jobs:
               'no_private_data': True,
           }
           high_risk = []
-          if event in ('pull_request', 'pull_request_target'):
+          if event == 'pull_request':
               event_path = os.environ.get('GITHUB_EVENT_PATH', '')
               with open(event_path, encoding='utf-8') as stream:
                   payload = json.load(stream)
@@ -152,14 +150,11 @@ jobs:
           receipt['enforcement_caveat'] = 'synthetic policy is not a live tool gate'
           receipt['audit_storage_caveat'] = 'GitHub Actions logs are not independent immutable evidence'
           receipt['observer_mode'] = (
-              'BASE_BRANCH_READ_ONLY' if event == 'pull_request_target'
-              else 'PR_CODE_UNTRUSTED_PREVIEW' if event == 'pull_request'
-              else 'SCHEDULED_BASE_OBSERVER'
+              'PR_CODE_UNTRUSTED_PREVIEW' if event == 'pull_request'
+              else 'DEFAULT_BRANCH_READ_ONLY_OBSERVER'
           )
           print('ENV004_PROVENANCE_RECEIPT=' +
                 json.dumps(receipt, sort_keys=True, separators=(',', ':')))
-          if high_risk and event == 'pull_request_target':
-              raise SystemExit('DENY: workflow modifications require separate independent review')
           if high_risk and event == 'pull_request':
               print('ENV004_PREVIEW_ONLY: workflow changes require trusted-base check')
           print('ENV004_READ_ONLY_AUDIT_PASS')
