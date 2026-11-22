@@ -218,3 +218,36 @@ Sources:
 https://docs.github.com/en/rest/checks/runs
 https://docs.github.com/en/rest/apps/apps
 https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/available-rules-for-rulesets
+
+## SEC-149 — offline multi-page Check Runs readback (synthetic only)
+
+`security/sec142/check_page_chain.py` and `test_check_page_chain.py` extend SEC147's
+`compare_check_readback` without changing the independent-admission acceptance
+flags. The new `compare_paginated_check_readback` first checks a **caller-provided**
+REST GET response chain for the exact PR HEAD ref, HTTPS api.github.com origin,
+`filter=all` (rather than GitHub's default `latest`), `per_page=100`, canonical
+page numbers 1..N, identical bounded `total_count`, full intermediate pages,
+correct Link next/last/prev/first relations, non-200 responses, and missing,
+reordered, ambiguous or excessive pages. It then passes the flattened list to
+SEC147's check ID / app.id / external_id / head SHA / outcome comparison.
+Malformed, truncated and inconsistent collections fail closed.
+
+The bounded prototype deliberately rejects more than 1,000 entries rather
+than pretending pagination was exhaustive. A multi-request chain is **not an
+atomic snapshot**: a concurrent Check Run creation/deletion may change data
+between pages. A link/URL declared by a caller is not a verified HTTP
+transport record; it can be forged together with the body. The test fixtures
+do not fetch live provider data, manage credentials, verify installed App
+identity, issue Checks, or establish operator approval. Even a perfect match
+returns `SYNTHETIC_MATCH_UNTRUSTED_NOT_AUTHORIZED` and
+`merge_authorized=false`. The production gate remains BLOCKED.
+
+A future independent authenticated App host must own the HTTP client,
+installation token, TLS and response metadata, rate-limit/retry policy,
+concurrent HEAD/review recheck, API pagination and complete check-suite
+coverage, and must revalidate the durable outbox intent. This branch and its
+PR-controlled green CI must never be considered the independent authority.
+
+GitHub sources:
+https://docs.github.com/en/rest/checks/runs
+https://docs.github.com/en/rest/using-the-rest-api/using-pagination-in-the-rest-api
