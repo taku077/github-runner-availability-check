@@ -190,5 +190,96 @@ for name, mutate in NEGATIVE_CASES:
     setattr(AdmissionBundleTests, "test_matrix_" + name, make_test())
 
 
+
+class BundleSecretBoundaryTests(unittest.TestCase):
+    """The bundle must reject credential-shaped fields anywhere in its tree."""
+
+    def setUp(self):
+        self.f = fixture()
+
+    def denied(self):
+        with self.assertRaises(Rejected):
+            compare_synthetic_admission_bundle(**self.f)
+
+    def test_token_hidden_under_pr_user_rejected(self):
+        self.f["app_window"]["pr_before"]["user"]["token"] = "DUMMY"
+        self.denied()
+
+    def test_token_hidden_under_review_rejected(self):
+        self.f["review_window"]["pages_after"][0]["body"][0][
+            "access_token"] = "DUMMY"
+        self.denied()
+
+    def test_jwt_hidden_under_reviewer_roster_rejected(self):
+        self.f["review_window"]["allowed_reviewers"]["222"][
+            "jwt"] = "DUMMY"
+        self.denied()
+
+    def test_client_secret_under_last_pusher_rejected(self):
+        self.f["review_window"]["last_pusher"]["client_secret"] = "DUMMY"
+        self.denied()
+
+    def test_password_under_local_intent_rejected(self):
+        self.f["app_window"]["local_intent"]["password"] = "DUMMY"
+        self.denied()
+
+    def test_pem_under_check_detail_rejected(self):
+        self.f["app_window"]["check_run_by_id"]["pem"] = "DUMMY"
+        self.denied()
+
+    def test_authorization_header_under_check_page_rejected(self):
+        self.f["app_window"]["page_responses"][0]["headers"][
+            "authorization"] = "DUMMY"
+        self.denied()
+
+    def test_private_key_nested_in_app_metadata_rejected(self):
+        self.f["app_window"]["pre_receipts"]["app"]["body"][
+            "private_key"] = "DUMMY"
+        self.denied()
+
+    def test_synthetic_verified_flag_in_review_cannot_authorize(self):
+        for name in ("pages_before", "pages_after"):
+            self.f["review_window"][name][0]["body"][0][
+                "independently_verified"] = True
+        r = compare_synthetic_admission_bundle(**self.f).as_dict()
+        self.assertFalse(r["operator_authorized"])
+        self.assertFalse(r["merge_authorized"])
+        self.assertFalse(r["api_authenticated"])
+
+    def test_review_sender_claim_cannot_attest_true_identity(self):
+        self.f["review_window"]["allowed_reviewers"]["222"][
+            "synthetic_verified_human"] = True
+        result = compare_synthetic_admission_bundle(**self.f).as_dict()
+        self.assertFalse(result["reviewer_human_independence_verified"])
+
+    def test_pr_head_record_missing_rejected(self):
+        self.f["app_window"]["pr_before"]["head"] = None
+        self.denied()
+
+    def test_pr_head_repo_record_missing_rejected(self):
+        self.f["app_window"]["pr_before"]["head"]["repo"] = None
+        self.denied()
+
+    def test_pr_head_repo_id_bool_rejected(self):
+        self.f["app_window"]["pr_before"]["head"]["repo"]["id"] = True
+        self.denied()
+
+    def test_missing_local_intent_is_controlled_rejection(self):
+        self.f["app_window"]["local_intent"] = None
+        self.denied()
+
+    def test_wrong_base_after_synthetic_read_denied(self):
+        self.f["app_window"]["pr_after"]["base"]["sha"] = "f" * 40
+        self.denied()
+
+    def test_author_changed_during_synthetic_read_denied(self):
+        self.f["app_window"]["pr_after"]["user"]["id"] = 999
+        self.denied()
+
+    def test_last_pusher_equals_rostered_reviewer_denied(self):
+        self.f["review_window"]["last_pusher"] = {
+            "id": 222, "login": "human-reviewer", "type": "User"}
+        self.denied()
+
 if __name__ == "__main__":
     unittest.main()
