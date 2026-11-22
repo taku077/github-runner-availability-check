@@ -23,3 +23,29 @@ Acceptance flags: `PROTOTYPE_ONLY`, `WEBHOOK_SIGNATURE_SYNTHETIC`, `INDEPENDENT_
 - https://docs.github.com/en/webhooks/using-webhooks/validating-webhook-deliveries
 - https://docs.github.com/en/webhooks/using-webhooks/best-practices-for-using-webhooks
 - https://docs.github.com/en/enterprise-cloud@latest/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/available-rules-for-rulesets
+
+
+## SEC-143 — durable delivery replay intake (synthetic only)
+
+Added 'security/sec142/webhook_intake.py' and 'test_webhook_intake.py'.
+First authenticate the exact raw webhook body with HMAC-SHA256. Then verify
+'X-GitHub-Delivery' as a UUID-style value, event type, repository, installation,
+PR number and head SHA. Atomically claim the delivery ID in a persistent SQLite
+WAL ledger with a unique key and full synchronous setting. Identical delivery
+IDs cannot be claimed twice, including across restarts or concurrent clients.
+
+This is an **untrusted source-code prototype**: no actual webhook server,
+no operational secret, no independent App installation, no verified human actor,
+no PR API readback, no check creation, no signed operator approval. Receipts
+always have status 'WEBHOOK_OBSERVED_ONLY_NOT_AUTHORIZED'. A valid webhook
+signature only authenticates that GitHub sent those bytes; it is not user
+authorization. A database on a PR-controlled host cannot attest independence.
+The ledger itself is not immutable evidence. GitHub redelivery with the
+same delivery ID is intentionally ignored/rejected. An identical payload
+under a *different* ID is not detected as a replay and must be correlated
+separately by a future trusted host. Custody, retention, backup, recovery,
+monitoring and replay ID scope remain unaccepted.
+
+Official references:
+https://docs.github.com/en/webhooks/using-webhooks/validating-webhook-deliveries
+https://docs.github.com/en/webhooks/using-webhooks/best-practices-for-using-webhooks
