@@ -43,7 +43,10 @@ def _utc(value: Any) -> datetime:
 def _url_page(value: Any, pr_number: int) -> int:
     if type(value) is not str:
         raise Rejected("missing PR-review request URL")
-    p = urlsplit(value)
+    try:
+        p = urlsplit(value)
+    except ValueError as exc:
+        raise Rejected("unexpected PR-review host/path") from exc
     if (p.scheme != "https" or p.netloc != "api.github.com" or
             p.path != f"/repos/{REPOSITORY}/pulls/{pr_number}/reviews" or
             p.fragment):
@@ -99,8 +102,8 @@ def _identity(user: Any) -> tuple[int, str]:
 def _review(item: Any, observed_utc: datetime) -> tuple:
     if type(item) is not dict or not _positive(item.get("id")):
         raise Rejected("invalid review record ID")
-    if item.get("state") not in REVIEW_STATES or (
-            type(item.get("state")) is not str):
+    state = item.get("state")
+    if type(state) is not str or state not in REVIEW_STATES:
         raise Rejected("unknown or unsubmitted review state")
     who = _identity(item.get("user"))
     sha = item.get("commit_id")
@@ -257,10 +260,20 @@ def compare_review_history(*, pages_before: list, pages_after: list,
     if not later:
         raise Rejected("no submitted PR review")
     final: dict[int, tuple] = {}
+    # A COMMENTED or DISMISSED row is not independently authenticated
+    # evidence that a prior CHANGES_REQUESTED was safely cleared.
+    # Only a new explicit APPROVED on the current HEAD can clear it for
+    # this conservative offline policy. GitHub's effective merge rules
+    # still require independent provider evaluation.
+    unresolved_requests: set[int] = set()
     for row in later:
         rid, uid, login, state, commit, ts = row
+        if state == "CHANGES_REQUESTED":
+            unresolved_requests.add(uid)
+        elif state == "APPROVED" and commit == head_sha:
+            unresolved_requests.discard(uid)
         final[uid] = row
-    if any(row[3] == "CHANGES_REQUESTED" for row in final.values()):
+    if unresolved_requests:
         raise Rejected("outstanding changes-requested review")
     chosen = []
     for uid, login in roster.items():
