@@ -143,7 +143,8 @@ def audit_workflow(path: Any, source: Any) -> WorkflowPreview:
                 issues.add("UNPARSEABLE_ACTION_REFERENCE")
             else:
                 action = match.group(1)
-                if ("@" not in action or "/" not in action.split("@", 1)[0]
+                if ("@" not in action or action.startswith(("./", "../", "/"))
+                        or "/" not in action.split("@", 1)[0]
                         or _SHA.fullmatch(action.rsplit("@", 1)[-1]) is None):
                     issues.add("ACTION_NOT_PINNED_BY_40_HEX_SHA")
                 if action.startswith("actions/checkout@"):
