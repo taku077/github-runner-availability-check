@@ -254,5 +254,57 @@ class PairedReadbackTests(unittest.TestCase):
         self.check("GATE_INDEPENDENT_APP_NOT_PINNED")
 
 
+
+class ReadbackCredentialBoundaryTests(unittest.TestCase):
+    """Do not persist obvious credential fields in source-only snapshots."""
+
+    def setUp(self):
+        self.f = fixture()
+
+    def deny(self):
+        with self.assertRaises(Rejected):
+            audit_paired_readbacks(**self.f)
+
+    def test_access_token_in_check_detail_rejected(self):
+        self.f["after"]["check_run_list"]["check_runs"][0][
+            "access_token"] = "SYNTHETIC_ONLY"
+        self.deny()
+
+    def test_authorization_header_rejected(self):
+        self.f["before"]["repository"]["authorization"] = "SYNTHETIC"
+        self.deny()
+
+    def test_nested_client_secret_rejected(self):
+        self.f["after"]["pull_request"]["user"][
+            "client_secret"] = "SYNTHETIC"
+        self.deny()
+
+    def test_hyphenated_x_hub_signature_key_rejected(self):
+        self.f["before"]["ruleset"]["X-Hub-Signature-256"] = "DUMMY"
+        self.deny()
+
+    def test_nested_api_token_rejected(self):
+        self.f["after"]["check_run_list"]["check_runs"][0][
+            "github_token"] = "DUMMY"
+        self.deny()
+
+    def test_non_string_dict_key_rejected(self):
+        self.f["before"]["repository"][2] = "DUMMY"
+        self.deny()
+
+    def test_excessive_nesting_rejected(self):
+        inner = {}
+        node = inner
+        for _ in range(30):
+            node["nested"] = {}
+            node = node["nested"]
+        self.f["before"]["repository"]["extra"] = inner
+        self.deny()
+
+    def test_large_list_rejected(self):
+        self.f["after"]["repository"]["extra"] = [None] * 1001
+        self.deny()
+
+
 if __name__ == "__main__":
     unittest.main()
