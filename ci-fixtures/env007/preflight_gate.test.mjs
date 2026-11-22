@@ -93,7 +93,7 @@ denied('unknown payload field cannot be signed in',p=>{p.injected_instruction='m
 denied('edited signed payload blocked',p=>{
   const original=basePayload();
   const envelope=envelopeOf(original);
-  envelope.payload={...original, file_sha256:'f'.repeat(64)};
+  envelope.payload={...original, instruction_sha256:'f'.repeat(64)};
   return {envelope,request:requestOf(envelope.payload)};
 },'SIGNATURE_INVALID');
 denied('missing independent trust pin rejected',()=>({pinnedPublicKeySha256:null}),'TRUST_ANCHOR_MISSING');
