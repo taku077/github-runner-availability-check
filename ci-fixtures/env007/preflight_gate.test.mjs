@@ -14,7 +14,8 @@ const clock = '2026-11-22T10:00:00Z';
 const repo = 'taku077/github-runner-availability-check';
 const branch = 'dev/pcfm-env003-public-main-audit';
 const sha = 'a'.repeat(40);
-const fileHash = 'b'.repeat(64);
+const actualFileBytes = Buffer.from('ENV007 synthetic public fixture: no secrets', 'utf8');
+const fileHash = createHash('sha256').update(actualFileBytes).digest('hex');
 const instruction = 'c'.repeat(64);
 const nonce = 'd'.repeat(32);
 
@@ -35,11 +36,11 @@ function requestOf(payload) {
 function check({payload=basePayload(), envelope, request, pinnedPublicKey=pem,
                  pinnedPublicKeySha256=fingerprint, actualHeadSha=sha,
                  clockUtc=clock, observedAuditHealthy=true,
-                 usedNonces=new Set()}={}) {
+                 usedNonces=new Set(), actualFileBytes: suppliedBytes=actualFileBytes}={}) {
   envelope ??= envelopeOf(payload);
   request ??= requestOf(payload);
   return verifyPreflight({request,envelope,pinnedPublicKey,pinnedPublicKeySha256,
-    actualHeadSha,clockUtc,observedAuditHealthy,usedNonces});
+    actualHeadSha,actualFileBytes: suppliedBytes,clockUtc,observedAuditHealthy,usedNonces});
 }
 function denied(title, mutate, reason){
   test(title,()=>{
@@ -74,6 +75,8 @@ denied('traversal rejected',p=>{p.path='ci-fixtures/env007/../other'},'INVALID_P
 denied('absolute path rejected',p=>{p.path='/ci-fixtures/env007/a'},'INVALID_PATH');
 denied('backslash path rejected',p=>{p.path='ci-fixtures/env007\\a'},'INVALID_PATH');
 denied('file content hash invalid',p=>{p.file_sha256='hmm'},'INVALID_SHA256');
+denied('bytes not present',()=>({actualFileBytes: null}),'ACTUAL_FILE_BYTES_MISSING');
+denied('file bytes changed after approval',()=>({actualFileBytes:Buffer.from('forged-content')}),'ACTUAL_FILE_HASH_MISMATCH');
 denied('instruction digest invalid',p=>{p.instruction_sha256='hmm'},'INVALID_SHA256');
 denied('head hash changed while awaiting approval',()=>({actualHeadSha:'f'.repeat(40)}),'REVISION_MISMATCH');
 denied('nonce improperly formatted',p=>{p.nonce='s'},'INVALID_NONCE');
