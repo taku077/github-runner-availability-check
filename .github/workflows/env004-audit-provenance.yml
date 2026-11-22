@@ -41,6 +41,34 @@ jobs:
           if event not in ('pull_request', 'workflow_dispatch', 'schedule'):
               raise SystemExit('DENY: unexpected event')
 
+          def classify_observer(event_name, run_ref):
+              if event_name == 'pull_request':
+                  return 'PR_CODE_UNTRUSTED_PREVIEW'
+              if event_name in ('workflow_dispatch', 'schedule'):
+                  if run_ref != 'refs/heads/main':
+                      raise SystemExit(
+                          'DENY: default-branch observer requires refs/heads/main')
+                  return 'DEFAULT_BRANCH_READ_ONLY_OBSERVER'
+              raise SystemExit('DENY: unexpected event')
+
+          run_ref = os.environ.get('GITHUB_REF', '')
+          observer_mode = classify_observer(event, run_ref)
+          assert classify_observer('workflow_dispatch', 'refs/heads/main') == (
+              'DEFAULT_BRANCH_READ_ONLY_OBSERVER')
+          assert classify_observer('schedule', 'refs/heads/main') == (
+              'DEFAULT_BRANCH_READ_ONLY_OBSERVER')
+          assert classify_observer('pull_request', 'refs/pull/2/merge') == (
+              'PR_CODE_UNTRUSTED_PREVIEW')
+          for negative_event in ('schedule', 'workflow_dispatch'):
+              for negative_ref in ('', 'refs/heads/feature', 'refs/tags/v1',
+                                   'refs/pull/2/merge'):
+                  try:
+                      classify_observer(negative_event, negative_ref)
+                  except SystemExit:
+                      pass
+                  else:
+                      raise AssertionError('Non-main default observer permitted')
+
           def get_json(path):
               if not path.startswith('/') or '..' in path:
                   raise ValueError('Invalid API path')
@@ -87,6 +115,7 @@ jobs:
           receipt = {
               'schema': 'pcfm-public-provenance-v1',
               'event': event,
+              'workflow_ref': run_ref,
               'github_actor_account': actor,
               'main_sha': main_sha,
               'ruleset_id': named[0]['id'],
@@ -149,10 +178,7 @@ jobs:
           receipt['synthetic_allowed'] = 1
           receipt['enforcement_caveat'] = 'synthetic policy is not a live tool gate'
           receipt['audit_storage_caveat'] = 'GitHub Actions logs are not independent immutable evidence'
-          receipt['observer_mode'] = (
-              'PR_CODE_UNTRUSTED_PREVIEW' if event == 'pull_request'
-              else 'DEFAULT_BRANCH_READ_ONLY_OBSERVER'
-          )
+          receipt['observer_mode'] = observer_mode
           print('ENV004_PROVENANCE_RECEIPT=' +
                 json.dumps(receipt, sort_keys=True, separators=(',', ':')))
           if high_risk and event == 'pull_request':

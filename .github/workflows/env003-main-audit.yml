@@ -70,9 +70,25 @@ jobs:
               print('ENV003_BYPASS_LIST_NOT_VISIBLE: independent readback required')
           types = {rule['type'] for rule in detail['rules']}
           assert {'pull_request', 'deletion', 'non_fast_forward'} <= types, 'Required restrictions missing'
-          for rule in detail['rules']:
-              if rule['type'] == 'pull_request':
-                  assert rule['parameters']['required_approving_review_count'] == 0, 'Unexpected review quorum'
+          review_rules = [rule for rule in detail['rules']
+                          if rule['type'] == 'pull_request']
+          assert len(review_rules) == 1, 'Missing or ambiguous pull request rule'
+          review_count = review_rules[0].get('parameters', {}).get(
+              'required_approving_review_count')
+          assert type(review_count) is int and review_count >= 0, 'Invalid review quorum'
+          # Transitional observer: report the existing zero-approval state without
+          # blocking a future approved increase to the required review count.
+          # CI success is not itself evidence of an independent review.
+          if review_count == 0:
+              print('ENV003_REVIEW_GATE_NOT_ENFORCED: approvals_required=0')
+          else:
+              print('ENV003_REVIEW_RULE_PRESENT_NOT_ATTESTED: approvals_required=' +
+                    str(review_count))
+          # Simple offline invariants for type/confusion errors.
+          for synthetic_count in (0, 1, 2):
+              assert type(synthetic_count) is int and synthetic_count >= 0
+          for invalid_count in (True, -1, None, '1'):
+              assert not (type(invalid_count) is int and invalid_count >= 0)
 
           # Demonstration only: this is not a mediator for ChatGPT or GitHub writes.
           def synthetic_gate(request):
