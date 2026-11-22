@@ -15,7 +15,7 @@ from typing import Any
 from prepost_consistency import compare_prepost_window
 from review_evidence import compare_review_history
 from trusted_check_policy import Rejected
-from installation_scope import REPOSITORY, REPO_ID
+from installation_scope import REPOSITORY, REPO_ID, _no_credentials
 
 _APP_KEYS = frozenset((
     "pre_receipts", "post_receipts", "pr_before", "pr_after",
@@ -95,6 +95,11 @@ def compare_synthetic_admission_bundle(*,
             type(review_window) is not dict or
             set(review_window) != _REVIEW_KEYS):
         raise Rejected("missing or excessive admission bundle evidence")
+    # Credential material is prohibited in every nested structure, not only
+    # in the SEC150 installation receipts. Never persist authorization bytes
+    # in a reproducibility manifest or a test artifact.
+    _no_credentials(app_window)
+    _no_credentials(review_window)
     for name in ("started_at_utc", "finished_at_utc"):
         _time(app_window[name])
         _time(review_window[name])
