@@ -130,3 +130,61 @@ References:
 https://docs.github.com/en/webhooks/using-webhooks/best-practices-for-using-webhooks
 https://docs.github.com/en/webhooks/using-webhooks/handling-failed-webhook-deliveries
 https://sqlite.org/lang_transaction.html
+
+
+## SEC-146 — combined SEC145 lifecycle backup and offline unknown-result outbox
+
+The SEC146 scope is source-only with 39 additional synthetic unit tests:
+- security/sec142/offline_outbox.py and test_offline_outbox.py
+- security/sec142/custody_v2.py and test_custody_v2.py
+
+**Local outbox** (SEC146): after a local SEC145 OBSERVED_COMPLETE entry,
+the program can create a deterministic PREPARED_LOCAL_ONLY intent bound to
+the observed delivery, attempt and PR head SHA in the SAME SQLite database
+and transaction domain. This is not an approval to publish any Check Run.
+Marking a hypothetical remote attempt as UNKNOWN_REMOTE_RESULT prevents
+any automatic retry. A caller-supplied API-like observation can only move
+the intent to RECONCILIATION_HOLD, and the result still has
+independent_provenance=NOT_ATTESTED and check_written=false.
+A caller-controlled successful conclusion is explicitly not accepted.
+No network library or GitHub write token is present in this code. GitHub
+App authentication, external_id reconciliation, actual provider check-run
+readback, and non-replay-safe external API side effects are NOT TESTED.
+Exactly-once delivery to GitHub is NOT guaranteed by this demonstration.
+
+**Custody v2** (SEC146): SQLite online backup includes ALL four operational
+tables for the SEC145+SEC146 state: lifecycle, recovery_audit, outbox_intents,
+and outbox_events. The backup and manifest include separate row counts,
+canonical row hashes, snapshot file SHA-256 and caller-key HMAC.
+Verification rejects changed bytes, modified manifests, missing tables,
+wrong keys and divergence between a snapshot and a still-current ledger.
+It is verification-only; never overwrites an original database.
+The previous SEC144 snapshot (SEC143 seen table) is intentionally separate,
+so a real migration would need inventory, schema pinning, retention and
+independent backups of both old and new storage paths.
+
+**Security limits**: Caller-supplied secret/HMAC key and purported remote
+check metadata do not attest actual GitHub App identity, independent
+operator authority, human reviewer identity, live PR head, external
+storage custody or incident recovery. A real trusted App host would be
+needed to bind the external_id to an App-owned check on the exact current
+PR SHA and reconcile unknown results without blindly sending a second
+request. Snapshot and manifest are not a single crash-atomic commit;
+a crash can leave partial files for quarantine. A private external HMAC
+key, backup custody, access controls, independent attestations, a fault
+injection plan and trusted-server check-run publication are absent.
+The stored outbox audit is local SQLite data, not an immutable log.
+None of these tests grants merge approval or changes the production Ruleset.
+
+Acceptance:
+SEC146_SOURCE_ONLY=true
+SEC146_EXTERNAL_GITHUB_API_CALLS=0
+SEC146_INDEPENDENT_GITHUB_APP=NOT_INSTALLED
+SEC146_TRUSTED_MERGE_ENFORCEMENT=NOT_ACCEPTED
+SEC146_LIVE_RESTORE=NOT_TESTED
+
+Official references:
+https://www.sqlite.org/backup.html
+https://www.sqlite.org/wal.html
+https://docs.github.com/en/rest/checks/runs
+https://docs.github.com/en/webhooks/using-webhooks/best-practices-for-using-webhooks
