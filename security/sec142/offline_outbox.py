@@ -122,7 +122,12 @@ class OfflineOutbox:
             raise Rejected("invalid transition")
         with self.lifecycle._tx() as c:
             row = self._get(c, intent_id)
-            if row is None or row[5] != expected or tick < row[6]:
+            last_tick = c.execute(
+                "SELECT MAX(at_tick) FROM outbox_events WHERE intent_id=?",
+                (intent_id,)
+            ).fetchone()[0]
+            if (row is None or row[5] != expected or last_tick is None or
+                    tick < last_tick):
                 raise Rejected("outbox transition denied")
             c.execute(
                 "UPDATE outbox_intents SET state=?, observation_digest=? "

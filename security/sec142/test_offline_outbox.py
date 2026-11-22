@@ -193,6 +193,16 @@ class OfflineOutboxTests(unittest.TestCase):
             count = c.execute("SELECT COUNT(*) FROM outbox_intents").fetchone()[0]
         self.assertEqual(count, 1)
 
+    def test_reverse_transition_time_is_rejected(self):
+        self.observe()
+        i = self.prepare()["intent_id"]
+        self.outbox.mark_uncertain(i, tick=111)
+        with self.assertRaisesRegex(Rejected, "transition denied"):
+            self.outbox.record_untrusted_remote_observation(
+                i, tick=110, remote_sample=self.sample(i))
+        self.assertEqual(self.outbox.status(i)["status"],
+                         "UNKNOWN_REMOTE_RESULT")
+
     def test_audit_transition_count(self):
         self.observe()
         i = self.prepare()["intent_id"]
