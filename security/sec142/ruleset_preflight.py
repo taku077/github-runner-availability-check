@@ -177,15 +177,47 @@ def audit_readonly_gate(*, repository: Any, ruleset: Any,
     if type(review_rows) is not list or len(review_rows) > 1000:
         reasons.add("PR_REVIEW_COLLECTION_INCOMPLETE")
         review_rows = []
-    approved_ids: set[int] = set()
+    # Only the *latest submitted review* from an account can count.
+    # Otherwise an earlier approval can be incorrectly counted after a
+    # later changes-requested / dismissal / comment. This is conservative:
+    # it may reject a mergeable PR and is never independent authorization.
+    last_reviews: dict[int, dict] = {}
+    unresolved_requests: set[int] = set()
+    review_ids: set[int] = set()
+    previous_review_id = 0
+    invalid_history = False
     submitter = _object(pr.get("user")).get("id")
     for review in review_rows:
         item = _object(review)
         uid = _object(item.get("user")).get("id")
-        if (item.get("state") == "APPROVED" and
-                _positive(uid) and uid != submitter and
-                item.get("commit_id") == actual_head):
-            approved_ids.add(uid)
+        rid, state, commit = (item.get("id"), item.get("state"),
+                              item.get("commit_id"))
+        if (not _positive(uid) or not _positive(rid) or
+                rid in review_ids or rid <= previous_review_id or
+                type(state) is not str or
+                state not in ("APPROVED", "CHANGES_REQUESTED",
+                              "DISMISSED", "COMMENTED") or
+                not _sha(commit)):
+            invalid_history = True
+            continue
+        review_ids.add(rid)
+        previous_review_id = rid
+        if state == "CHANGES_REQUESTED":
+            unresolved_requests.add(uid)
+        elif state == "APPROVED" and commit == actual_head:
+            # We require an explicit current-HEAD approval; unrelated
+            # comments/dismissals do not clear a change request.
+            unresolved_requests.discard(uid)
+        last_reviews[uid] = item
+    if invalid_history:
+        reasons.add("REVIEW_HISTORY_AMBIGUOUS")
+    if unresolved_requests:
+        reasons.add("UNRESOLVED_CHANGE_REQUESTS")
+    approved_ids = {
+        uid for uid, item in last_reviews.items()
+        if uid != submitter and item["state"] == "APPROVED" and
+           item["commit_id"] == actual_head
+    } if not invalid_history and not unresolved_requests else set()
     if not (_positive(count) and len(approved_ids) >= count):
         reasons.add("CURRENT_SHA_APPROVALS_NOT_OBSERVED")
 
