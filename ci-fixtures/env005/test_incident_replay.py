@@ -203,6 +203,22 @@ class ReplayTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "1..1000"):
             trace(POLICY, e * 400)
 
+    def test_25_sequence_gap_is_an_alert_with_event_id(self):
+        e = sequence()
+        e[1]["seq"] = 5
+        recalc_chain(e)
+        r = trace(POLICY, e)
+        self.assertEqual("SEQUENCE_GAP", r["first_observed_divergence"]["rule"])
+        self.assertEqual("r1", r["first_observed_divergence"]["event_id"])
+
+    def test_26_matching_operator_claim_is_not_identity_proof(self):
+        e = sequence()
+        r = trace(POLICY, e, anchor(e))
+        self.assertEqual("INTERNAL_CONSISTENCY_ONLY", r["decision"])
+        self.assertFalse(r["anchor_identity_authenticated"])
+        self.assertTrue(any("untrusted event text" in x
+                            for x in r["evidence_limitations"]))
+
     def test_24_missing_record_fails(self):
         with self.assertRaisesRegex(ValueError, "event schema mismatch"):
             e = sequence()
