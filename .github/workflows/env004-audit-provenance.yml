@@ -87,6 +87,87 @@ jobs:
                   raise ValueError('API result exceeds limit')
               return json.loads(raw)
 
+          def full_sha(value):
+              return (type(value) is str and len(value) == 40 and
+                      all(char in '0123456789abcdef' for char in value))
+
+          def validated_pr_revision(payload, live, number):
+              # The webhook event is a historical observation; the REST PR
+              # response is live. Never attach a stale run to a newer PR head.
+              if type(number) is not int or number <= 0:
+                  raise SystemExit('DENY: invalid pull request number')
+              if not isinstance(payload, dict) or not isinstance(live, dict):
+                  raise SystemExit('DENY: invalid PR metadata')
+              if payload.get('number') != number or live.get('number') != number:
+                  raise SystemExit('DENY: PR number mismatch')
+              try:
+                  event_pr = payload['pull_request']
+                  event_head = event_pr['head']['sha']
+                  live_head = live['head']['sha']
+                  event_base = event_pr['base']
+                  live_base = live['base']
+                  event_base_sha = event_base['sha']
+                  live_base_sha = live_base['sha']
+                  event_base_repo = event_base['repo']['full_name']
+                  live_base_repo = live_base['repo']['full_name']
+              except (TypeError, KeyError):
+                  raise SystemExit('DENY: incomplete PR identity metadata')
+              if not all(full_sha(sha) for sha in
+                         (event_head, live_head, event_base_sha, live_base_sha)):
+                  raise SystemExit('DENY: invalid PR revision SHA')
+              if event_head != live_head or event_base_sha != live_base_sha:
+                  raise SystemExit('DENY: PR revision changed during audit')
+              if (event_base.get('ref') != 'main' or
+                      live_base.get('ref') != 'main' or
+                      event_base_repo != repo or live_base_repo != repo):
+                  raise SystemExit('DENY: unexpected PR base identity')
+              return event_head, event_base_sha
+
+          # Pure offline negative cases: no GitHub write or sensitive data.
+          synthetic_head = 'a' * 40
+          synthetic_base = 'b' * 40
+          synthetic_payload = {
+              'number': 2,
+              'pull_request': {
+                  'head': {'sha': synthetic_head},
+                  'base': {'sha': synthetic_base, 'ref': 'main',
+                           'repo': {'full_name': repo}}
+              }
+          }
+          synthetic_live = {
+              'number': 2, 'head': {'sha': synthetic_head},
+              'base': {'sha': synthetic_base, 'ref': 'main',
+                       'repo': {'full_name': repo}}
+          }
+          assert validated_pr_revision(synthetic_payload, synthetic_live, 2) == (
+              synthetic_head, synthetic_base)
+          for variant in ('head_changed', 'base_changed', 'wrong_repo',
+                          'wrong_number', 'invalid_sha', 'missing_event_pr'):
+              event_case = json.loads(json.dumps(synthetic_payload))
+              live_case = json.loads(json.dumps(synthetic_live))
+              if variant == 'head_changed':
+                  live_case['head']['sha'] = 'c' * 40
+              elif variant == 'base_changed':
+                  live_case['base']['sha'] = 'c' * 40
+              elif variant == 'wrong_repo':
+                  live_case['base']['repo']['full_name'] = 'other/repo'
+              elif variant == 'wrong_number':
+                  live_case['number'] = 3
+              elif variant == 'invalid_sha':
+                  event_case['pull_request']['head']['sha'] = 'not-a-sha'
+              else:
+                  del event_case['pull_request']
+              try:
+                  validated_pr_revision(event_case, live_case, 2)
+              except SystemExit:
+                  pass
+              else:
+                  raise AssertionError('PR snapshot mismatch accepted: ' + variant)
+
+          execution_sha = os.environ.get('GITHUB_SHA', '')
+          if not full_sha(execution_sha):
+              raise SystemExit('DENY: invalid workflow execution SHA')
+
           branch = get_json('/branches/main')
           if branch.get('protected') is not True:
               raise SystemExit('DENY: main protection missing')
@@ -116,6 +197,7 @@ jobs:
               'schema': 'pcfm-public-provenance-v1',
               'event': event,
               'workflow_ref': run_ref,
+              'workflow_execution_sha': execution_sha,
               'github_actor_account': actor,
               'main_sha': main_sha,
               'ruleset_id': named[0]['id'],
@@ -130,13 +212,15 @@ jobs:
               with open(event_path, encoding='utf-8') as stream:
                   payload = json.load(stream)
               number = payload.get('number')
-              if not isinstance(number, int) or number <= 0:
+              if type(number) is not int or number <= 0:
                   raise SystemExit('DENY: invalid pull request number')
+              if run_ref != 'refs/pull/' + str(number) + '/merge':
+                  raise SystemExit('DENY: unexpected PR workflow ref')
               pr = get_json('/pulls/' + str(number))
-              if pr['base']['ref'] != 'main':
-                  raise SystemExit('DENY: unexpected PR base')
+              event_head, event_base = validated_pr_revision(payload, pr, number)
               receipt['pr_number'] = number
-              receipt['pr_head_sha'] = pr['head']['sha']
+              receipt['pr_head_sha'] = event_head
+              receipt['pr_base_sha'] = event_base
               receipt['pr_author_account'] = pr['user']['login']
               paths = []
               # Fail closed on unexpectedly large PRs; never silently truncate.
@@ -152,6 +236,12 @@ jobs:
                   raise SystemExit('DENY: PR changed-file limit exceeded')
               if len(paths) != len(set(paths)):
                   raise SystemExit('DENY: duplicate filename metadata')
+              if type(pr.get('changed_files')) is not int or len(paths) != pr['changed_files']:
+                  raise SystemExit('DENY: PR files changed or incomplete')
+              pr_after = get_json('/pulls/' + str(number))
+              validated_pr_revision(payload, pr_after, number)
+              if pr_after['changed_files'] != len(paths):
+                  raise SystemExit('DENY: PR changed during file enumeration')
               receipt['file_count'] = len(paths)
               receipt['file_path_digest_sha256'] = hashlib.sha256(
                   ('\n'.join(sorted(paths)) + '\n').encode('utf-8')
