@@ -133,7 +133,7 @@ def trace(policy, events, anchor=None):
             "events must contain 1..1000 records")
     alerts = []
     event_index = {}
-    authorized_requests = set()
+    policy_matching_requests = set()
     prev = "0"*64
     prev_time = None
 
@@ -144,7 +144,8 @@ def trace(policy, events, anchor=None):
 
     for n, event in enumerate(events, 1):
         stamp = validate_event_shape(event)
-        require(event["seq"] == n, "non-contiguous sequence input")
+        if event["seq"] != n:
+            alert(event, "SEQUENCE_GAP", "sequence position differs from observed position")
         if event["event_id"] in event_index:
             alert(event, "DUPLICATE_EVENT_ID", "repeated event identifier")
         if event["prev_hash"] != prev:
@@ -166,11 +167,11 @@ def trace(policy, events, anchor=None):
                 alert(event, "UNAUTHORIZED_REQUEST",
                       "operation not authorized by the supplied policy")
             else:
-                authorized_requests.add(event["event_id"])
+                policy_matching_requests.add(event["event_id"])
         elif event["kind"] == "operation_result":
-            if event["parent_id"] not in authorized_requests:
+            if event["parent_id"] not in policy_matching_requests:
                 alert(event, "UNAUTHORIZED_EXECUTION",
-                      "no authorized predecessor request in this log")
+                      "no preceding policy-matching request in this log")
         elif event["kind"] == "log_gap":
             alert(event, "LOG_GAP", "collector reported missing observations")
         if event["event_id"] not in event_index:
@@ -214,6 +215,7 @@ def trace(policy, events, anchor=None):
             "Earliest observed anomaly is not necessarily the original attack point.",
             "Parent references are claims, not independently proven causality.",
             "Hashes do not authenticate the human who issued an instruction.",
+            "A verified_operator_claim is just untrusted event text, not a verified approval." ,
             "A compromised controller can rewrite policy, logs and anchor together.",
             "No ChatGPT internal model inputs or tool-dispatch events were obtained.",
             "No GitHub/Drive write authorization is conferred by this program."
