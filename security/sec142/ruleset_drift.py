@@ -48,9 +48,40 @@ def _canon(data: Any) -> bytes:
     return raw
 
 
+def _reject_sensitive_keys(item: Any, depth: int = 0) -> None:
+    """Reject obvious credential fields in normalized, untrusted fixtures.
+
+    This is a conservative tripwire, NOT generic secret scanning; a secret
+    embedded in a free-text value can still evade it. A trusted host must
+    construct a strict allowlisted response and redact before serialization.
+    """
+    if depth > 24:
+        raise Rejected("excessive snapshot nesting")
+    prohibited = frozenset((
+        "token", "authorization", "jwt", "private_key", "secret",
+        "password", "client_secret", "access_token", "webhook_secret",
+        "api_key", "pem", "x_hub_signature_256",
+    ))
+    if type(item) is dict:
+        for name, value in item.items():
+            if type(name) is not str:
+                raise Rejected("snapshot contains non-string key")
+            normalized = name.lower().replace("-", "_")
+            if normalized in prohibited or normalized.endswith((
+                    "_token", "_secret", "_password", "_private_key")):
+                raise Rejected("credential field prohibited in snapshot")
+            _reject_sensitive_keys(value, depth + 1)
+    elif type(item) is list:
+        if len(item) > 1000:
+            raise Rejected("oversized snapshot list")
+        for value in item:
+            _reject_sensitive_keys(value, depth + 1)
+
+
 def _shape(observation: Any) -> dict:
     if type(observation) is not dict or set(observation) != _ALLOWED:
         raise Rejected("incomplete or excessive GitHub readback fields")
+    _reject_sensitive_keys(observation)
     if not _valid_sha(observation["main_head_sha"]):
         raise Rejected("malformed public main HEAD")
     if (type(observation["repository"]) is not dict or
