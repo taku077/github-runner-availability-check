@@ -49,3 +49,38 @@ monitoring and replay ID scope remain unaccepted.
 Official references:
 https://docs.github.com/en/webhooks/using-webhooks/validating-webhook-deliveries
 https://docs.github.com/en/webhooks/using-webhooks/best-practices-for-using-webhooks
+
+
+## SEC-144 — offline custody snapshot and restore preflight (synthetic only)
+
+Added 'security/sec142/ledger_snapshot.py' and 'test_ledger_snapshot.py'.
+The snapshot helper invokes SQLite's online backup API from a read-only
+connection so a WAL-backed ledger can be copied consistently. It refuses
+overwriting existing snapshot/manifest paths; checks SQLite integrity and
+ordered row evidence digest; writes a snapshot SHA-256 plus a canonical JSON
+manifest authenticated by an HMAC key provided to the function. A verify-only
+preflight detects changed manifest, wrong key, changed snapshot bytes, missing
+database and stale snapshot compared with current live ledger. No action
+overwrites the live ledger or publishes GitHub checks.
+
+Boundaries: this source is PR-controlled and synthetic, and the MAC secret
+is supplied by the caller; it is NOT an independently protected custodian,
+immutable archive, tamper-proof audit record, trusted-key provider, rollback
+mechanism, actual PR review, or a real GitHub App deployment. There is no
+automatic restore; a verified stale snapshot must NOT replace a newer ledger.
+No crash-atomic transaction spans *both* SQLite snapshot and separate manifest.
+An interrupted creation may leave partial files that must be quarantined
+without modification of original evidence. WAL durability also depends on
+underlying filesystem and sync semantics; production needs a separately
+secured host and externally protected manifests, backup/restore drill,
+secrets, ownership, alerts, limits, retention and external independent audit.
+
+The system still rejects GitHub webhook redeliveries with the same delivery
+ID: retry/processing recovery after a crash is NOT implemented or accepted.
+No input here gives permission to merge a PR or declare a PC intrusion.
+
+Official references:
+https://www.sqlite.org/backup.html
+https://www.sqlite.org/wal.html
+https://www.sqlite.org/pragma.html
+https://docs.github.com/en/webhooks/using-webhooks/best-practices-for-using-webhooks
