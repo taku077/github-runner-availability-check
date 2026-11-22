@@ -182,7 +182,7 @@ def audit_workflow(path: Any, source: Any) -> WorkflowPreview:
     # detection by regex. Real trust enforcement requires an independent parser.
     if re.search(r"(?m)^\s*(?:'on'|\"on\"|<<):", text):
         issues.add("UNSUPPORTED_YAML_MAPPING_OR_MERGE")
-    if re.search(r"(?m)^\s*on:\s*(?:\[|\{|\*|&|!|[A-Za-z])", text):
+    if re.search(r"(?m)^[ \\t]*on:[ \\t]*(?:\[|\{|\*|&|!|[A-Za-z])", text):
         issues.add("UNSUPPORTED_INLINE_OR_ALIASED_EVENTS")
     if re.search(r"(?m)^\s*(?:pull_request_target|workflow_run|"
                  r"issue_comment|repository_dispatch):", text):
