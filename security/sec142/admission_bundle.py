@@ -117,12 +117,17 @@ def compare_synthetic_admission_bundle(*,
             submitter_a != reviewer_author):
         raise Rejected("PR submitter and review author provenance mismatch")
 
+    intent = app_window.get("local_intent")
+    head_record = before.get("head")
+    repo_record = (head_record.get("repo") if type(head_record) is dict
+                   else None)
+    if (type(intent) is not dict or type(repo_record) is not dict):
+        raise Rejected("missing durable intent or PR head repository")
     if (review_window["pr_number"] != app_window["expected_pr_number"] or
             type(review_window["pr_number"]) is not int or
-            review_window["head_sha"] !=
-            app_window["local_intent"].get("head_sha") or
+            review_window["head_sha"] != intent.get("head_sha") or
             before.get("number") != review_window["pr_number"] or
-            before.get("head", {}).get("repo", {}).get("id") != REPO_ID):
+            repo_record.get("id") != REPO_ID):
         raise Rejected("bundle PR/HEAD/repository binding mismatch")
 
     # Both are UNTRUSTED structural comparisons. Do not infer source
