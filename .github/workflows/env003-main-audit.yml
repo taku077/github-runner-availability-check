@@ -1,0 +1,25 @@
+name: SEC141 disposable required-check trust-boundary negative fixture
+
+on:
+  pull_request:
+    branches: [main]
+
+# SECURITY TEST ONLY. Untrusted PR-controlled source, NO approval, NO merge.
+# Mimics the existing required job name but deliberately performs NO ruleset audit.
+# The purpose is to test whether a PR-controlled workflow can self-report success.
+permissions:
+  contents: read
+
+jobs:
+  env003-main-rules:
+    name: env003-main-rules
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    steps:
+      - name: Synthetic required-check origin negative control
+        shell: bash
+        run: |
+          echo 'SEC141_NEGATIVE_FIXTURE_PR_CONTROLLED_JOB=TRUE'
+          echo 'SEC141_RULESET_AUDIT_PERFORMED=FALSE'
+          echo 'SEC141_INDEPENDENT_APPROVAL=NOT_ATTESTED'
+          echo 'This is not a security gate and must NEVER be merged.'
