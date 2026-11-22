@@ -1,0 +1,123 @@
+{
+  "notice": "PCFM SEC155: public GitHub REST metadata observed via connector, not independently authenticated, unsigned, historical snapshot. GitHub Actions is not an independent App.",
+  "observed_date_jst": "2026-11-23",
+  "source_urls": {
+    "repository": "https://api.github.com/repos/taku077/github-runner-availability-check",
+    "ruleset": "https://api.github.com/repos/taku077/github-runner-availability-check/rulesets/27806733",
+    "pull_request": "https://api.github.com/repos/taku077/github-runner-availability-check/pulls/4",
+    "reviews": "https://api.github.com/repos/taku077/github-runner-availability-check/pulls/4/reviews?per_page=100",
+    "check_runs": "https://api.github.com/repos/taku077/github-runner-availability-check/commits/c28c576154103c7f8741ca357c732ba0c624a190/check-runs?per_page=100&filter=all",
+    "main": "https://api.github.com/repos/taku077/github-runner-availability-check/git/ref/heads/main"
+  },
+  "observed_base_sha": "1b33f359b1079d0c31fc964083991fd875cda304",
+  "observed_pr_head_sha": "c28c576154103c7f8741ca357c732ba0c624a190",
+  "evidence": {
+    "repository": {
+      "id": 1450293513,
+      "full_name": "taku077/github-runner-availability-check",
+      "owner": {
+        "id": 344928446,
+        "type": "User"
+      },
+      "default_branch": "main",
+      "private": false
+    },
+    "ruleset": {
+      "id": 27806733,
+      "source": "taku077/github-runner-availability-check",
+      "source_type": "Repository",
+      "target": "branch",
+      "enforcement": "active",
+      "bypass_actors": [],
+      "conditions": {
+        "ref_name": {
+          "exclude": [],
+          "include": [
+            "~DEFAULT_BRANCH"
+          ]
+        }
+      },
+      "rules": [
+        {
+          "type": "non_fast_forward"
+        },
+        {
+          "type": "pull_request",
+          "parameters": {
+            "required_approving_review_count": 0,
+            "dismiss_stale_reviews_on_push": false,
+            "required_reviewers": [],
+            "require_code_owner_review": false,
+            "require_last_push_approval": false,
+            "required_review_thread_resolution": false,
+            "require_extra_approval_for_unattributed_changes": false,
+            "allowed_merge_methods": [
+              "merge",
+              "squash",
+              "rebase"
+            ]
+          }
+        },
+        {
+          "type": "deletion"
+        },
+        {
+          "type": "required_status_checks",
+          "parameters": {
+            "strict_required_status_checks_policy": false,
+            "do_not_enforce_on_create": false,
+            "required_status_checks": [
+              {
+                "context": "env003-main-rules",
+                "integration_id": 15368
+              }
+            ]
+          }
+        }
+      ],
+      "updated_at": "2026-11-22T15:02:21.130+09:00"
+    },
+    "pull_request": {
+      "number": 4,
+      "state": "open",
+      "draft": true,
+      "merged": false,
+      "user": {
+        "id": 344928446
+      },
+      "head": {
+        "sha": "c28c576154103c7f8741ca357c732ba0c624a190",
+        "repo": {
+          "id": 1450293513
+        }
+      },
+      "base": {
+        "sha": "1b33f359b1079d0c31fc964083991fd875cda304",
+        "ref": "main",
+        "repo": {
+          "id": 1450293513
+        }
+      }
+    },
+    "reviews": [],
+    "check_run_list": {
+      "total_count": 1,
+      "check_runs": [
+        {
+          "id": 137322538241,
+          "name": "sec142-prototype-tests-not-a-required-gate",
+          "status": "completed",
+          "conclusion": "success",
+          "head_sha": "c28c576154103c7f8741ca357c732ba0c624a190",
+          "app": {
+            "id": 15368
+          },
+          "external_id": "20011511-099d-5961-a15a-90cc7fac7b07"
+        }
+      ]
+    },
+    "main_head_sha": "1b33f359b1079d0c31fc964083991fd875cda304"
+  },
+  "independent_enforcement_accepted": false,
+  "production_deployed": false
+}
