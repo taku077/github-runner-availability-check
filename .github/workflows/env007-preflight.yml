@@ -1,0 +1,33 @@
+name: ENV007 independent-intent preflight synthetic tests
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  env007-preflight-tests:
+    name: env007-preflight-tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout public synthetic test files only
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Verify Node runtime and test Ed25519 preflight policy
+        shell: bash
+        run: |
+          node --version
+          node --test ci-fixtures/env007/preflight_gate.test.mjs
+      - name: State enforced limits
+        shell: bash
+        run: |
+          echo 'ENV007_SIGNER_IDENTITY=NOT_ATTESTED'
+          echo 'ENV007_LIVE_TOOL_MEDIATOR=NOT_DEPLOYED'
+          echo 'ENV007_NONCE_STORE=TEST_ONLY'
+          echo 'ENV007_REAL_WRITE_AUTHORIZATION=DISABLED'

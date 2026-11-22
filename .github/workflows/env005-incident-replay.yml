@@ -1,0 +1,32 @@
+name: ENV005 synthetic first divergence tests
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  env005-trace-tests:
+    name: env005-trace-tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout public synthetic fixture only
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Test first-observed-divergence and tamper evidence limits
+        shell: bash
+        run: |
+          python3 -m unittest discover -s ci-fixtures/env005 -p 'test_*.py' -v
+      - name: Explicit environment admission boundary
+        shell: bash
+        run: |
+          echo 'ENV005_OFFLINE_TEST_ONLY=true'
+          echo 'ENV005_LIVE_WRITE_GATE=NOT_IMPLEMENTED'
+          echo 'ENV005_INDEPENDENT_ORIGIN_ATTESTATION=NOT_IMPLEMENTED'
+          echo 'ENV005_DETECTIVE_TRACE=CHECKED_SYNTHETIC_ONLY'
