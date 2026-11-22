@@ -84,3 +84,49 @@ https://www.sqlite.org/backup.html
 https://www.sqlite.org/wal.html
 https://www.sqlite.org/pragma.html
 https://docs.github.com/en/webhooks/using-webhooks/best-practices-for-using-webhooks
+
+
+## SEC-145: durable delivery lifecycle and fenced observation recovery (offline synthetic)
+
+The new files security/sec142/delivery_lifecycle.py and
+security/sec142/test_delivery_lifecycle.py demonstrate a SQLite lifecycle
+independent of the earlier SEC143 claim-once ledger. SEC143 is kept intact
+for historical behavior and tests; do NOT run both ingestion ledgers against
+the same live webhook without an independently verified migration.
+
+States are RECEIVED -> PROCESSING -> OBSERVED_COMPLETE, or
+PROCESSING -> RECOVERY_HOLD after the lease deadline. An authenticated
+redelivery of the same delivery GUID and identical payload returns the
+existing state; a payload collision fails closed. Repeated deliveries NEVER
+start a new processing attempt automatically. Each worker gets a random,
+per-attempt fencing token. The store rejects a stale worker after expiry
+or re-arm; the SQLite transition uses BEGIN IMMEDIATE and UNIQUE keys.
+Logical time rollback is refused; production requires a trustworthy clock.
+
+A synthetic manual-recovery ticket binds delivery GUID, body SHA-256,
+PR HEAD, observed attempt and expiration to an HMAC of a caller-supplied
+key. On an expired attempt, the ticket can move RECOVERY_HOLD back to
+RECEIVED, but only in an OFFLINE DEMONSTRATION. The key and alleged live
+HEAD are supplied by the untrusted caller: this does NOT authenticate a
+real operator, account, GitHub check or user instruction. The ticket
+cannot auto-start a worker or emit a check. A recovery audit table records
+ticket digest/attempt inside the same untrusted DB; it is NOT immutable.
+
+OBSERVED_COMPLETE means internal observation ONLY, not an actual outbound
+GitHub API side effect. Exactly-once remote writes are NOT proven. A real
+protected deployment would require an independent host and operator,
+re-fetch of current GitHub PR and review state, protected signing keys,
+durable transaction/outbox, remote check-run reconciliation, backup of
+BOTH the old and new state schemas, log retention and crash/fault tests.
+In particular, SEC144 snapshot tooling checks the SEC143 seen table,
+NOT the new SEC145 lifecycle and recovery_audit tables. Consequently
+SEC144 backups DO NOT protect SEC145 state and this remains BLOCKED.
+
+The new tests are synthetic-only and use fake signing keys; no live
+GitHub App, credentials, authorized reviewer, check-run publication,
+ruleset modification or user-PC investigation occurs in SEC145.
+
+References:
+https://docs.github.com/en/webhooks/using-webhooks/best-practices-for-using-webhooks
+https://docs.github.com/en/webhooks/using-webhooks/handling-failed-webhook-deliveries
+https://sqlite.org/lang_transaction.html
