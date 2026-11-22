@@ -293,3 +293,50 @@ GitHub official references:
 - https://docs.github.com/en/rest/apps/installations
 - https://docs.github.com/en/apps/creating-github-apps/about-creating-github-apps/best-practices-for-creating-a-github-app
 - https://docs.github.com/en/rest/checks/runs
+
+## SEC-151 — fail-closed pre/post race consistency (offline, not authority)
+
+New `security/sec142/prepost_consistency.py` and
+`test_prepost_consistency.py` compose the SEC150 GitHub App/installation
+scope validator with the SEC149 complete bounded Check Runs pagination and
+SEC147 app/source/external_id/HEAD comparator.
+
+Two normalized, caller-supplied App/installation/repository/token metadata
+snapshots are compared before and after a hypothetical provider readback.
+Strict checks reject installation suspension, App identity or slug drift,
+permission escalation, repository-scope changes, token-expiry drift, credential
+material, non-200 receipt metadata, expired tokens and changed supplemental
+metadata. The simulated observation window must advance in UTC and be at most
+120 seconds (a local *prototype policy*, not a GitHub guarantee). PR metadata
+is rechecked for exact number, head SHA, base SHA, public PCFM repo ID,
+state=open, draft=false, merged=false, and read-before/read-after equality.
+Check run identity and bounded API page-chain consistency are then checked
+against the frozen local outbox intent and pinned App ID.
+
+**Important acceptance boundary:** This is not a real authenticated provider
+readback. The expected App/installation/base IDs, both timestamps, the
+authorization labels, the API payloads, PR metadata and Check Run details
+are *all caller-controlled*. Two forged yet identical snapshots can pass
+structural checks; data can change *after* the second observation and before
+a write; a successful Check Run response is not an authorization. Review
+approval and human identity are not independently authenticated or checked.
+The current PR #4 is still Draft and cannot pass the synthetic not-draft
+positive fixture in its live state. No HTTP client, actual App, JWT, tokens,
+Check Run write, Ruleset change, merge or investigated-PC action exists here.
+
+Even positive synthetic test inputs yield only
+`SYNTHETIC_PREPOST_MATCH_NOT_AUTHORIZED`, with
+`merge_authorized=false`, `check_written=false` and all provider/operator
+auth flags false. A future live host requires independently controlled App
+keys and authenticated operator policy, pinned trusted source outside this
+repo, authenticated REST transport, pre-commit freshness/permission
+revalidation, failure-safe recovery, explicit owner approval and an
+authorized Ruleset rejection test. Keep INDEPENDENT_ENFORCEMENT=NOT_ACCEPTED
+and PRODUCTION=BLOCKED.
+
+Official references:
+- https://docs.github.com/en/rest/apps/apps
+- https://docs.github.com/en/rest/apps/installations
+- https://docs.github.com/en/rest/pulls/pulls
+- https://docs.github.com/en/rest/checks/runs
+- https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/authenticating-as-a-github-app-installation
