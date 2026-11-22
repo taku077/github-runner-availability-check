@@ -340,3 +340,80 @@ Official references:
 - https://docs.github.com/en/rest/pulls/pulls
 - https://docs.github.com/en/rest/checks/runs
 - https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/authenticating-as-a-github-app-installation
+
+## SEC-152 — GitHub PR review history is not independent human identity
+
+New source: security/sec142/review_evidence.py and test_review_evidence.py
+(with post-CI adversarial cases). This is a **candidate-only offline policy**
+over caller-supplied GitHub-like response envelopes, not a trusted review
+service or a native Ruleset implementation.
+
+- Validate the exact HTTPS api.github.com PR-review route and per_page=100
+  pagination. Review listing returns an **array**, not Check Runs' object
+  with total_count. Require next/last/prev Link consistency, ordered pages,
+  bounded 1,000 records, non-200 error rejection, monotonically ordered
+  review IDs/timestamps, no duplicate or ambiguous reviewer identities,
+  submitted UTC timestamps, valid SHA and known submitted review states.
+- Require a current-HEAD APPROVED review after a caller-reported last push.
+  Reject reviews from the PR submitter or last pusher, missing reviewer
+  policy roster, insufficient distinct reviewers, stale approval, PENDING,
+  unknown states, DISMISSED, reviews superseded by COMMENTED, and unresolved
+  CHANGES_REQUESTED. A subsequent COMMENTED or DISMISSED is not independent
+  proof of resolving a prior change request; later explicit current-HEAD
+  APPROVED review is required for the conservative local candidate policy.
+- Compare complete before/after review inventories. A changed review or
+  missing page rejects the candidate. Caller-provided reviewer roster and
+  permission fields are **untrusted claims**; a matching review cannot prove
+  separate people, actual reviewer rights or user approval.
+
+This policy can **over-reject** legitimately reviewable PRs, since it models
+review history conservatively rather than exactly matching GitHub branch
+protection. GitHub review state, dismissals, and merge eligibility require
+a separately authenticated live provider. The owner's actual public PR #4
+remains Draft, with zero submitted reviews at this investigation point.
+Synthetic match remains SYNTHETIC_REVIEW_MATCH_NOT_AUTHORIZED,
+merge_authorized=false, actor_independence_attested=false.
+
+## SEC-153 — offline cross-source evidence bundle, never authority
+
+New source: security/sec142/admission_bundle.py and test_admission_bundle.py.
+The safe candidate workflow binds:
+1. SEC151 App/installation/token pre/post scope and PR/Check Run chain;
+2. SEC152 complete review history before/after and hypothetical roster;
+3. exact PR number, current HEAD, public repo ID, submitter account identity,
+   and reviewer window **enclosing** the Check readback window;
+4. deterministic SHA-256 of **only a minimal nonsecret summary**.
+
+The digest is solely for reproducibility. It is **not a signature, external
+commitment, independent timestamp, tamper-proof log or actual approval**.
+No raw token, authorization header or key may enter the composed bundle.
+Synthetic tests cover missing nested PR heads/intents, changed/stale actors,
+forged flags, altered statuses, non-UTC windows, cross-source mismatches,
+and credential-shaped keys throughout the input.
+
+A structurally perfect bundle remains SYNTHETIC_BUNDLE_NOT_AUTHORIZED with
+all authentication, independent operator, Ruleset, Check write, and merge
+authorization flags false. GitHub account IDs/roles/PR comments alone cannot
+prove distinct independent humans. PR-controlled green CI is not authority.
+
+Early SEC152/153 CI identified five mistaken test error-string expectations
+and one missing-intent AttributeError. Both were repaired; preserve the
+failed-run history in the final handoff and link the last passing SHA.
+Follow-up negative regression tests specifically exercise malformed
+states and URLs, historical change requests masked by comments, and
+secret-field injection at all levels.
+
+Actual independent GitHub App installation/keys, provider-authenticated
+transport, operator countersignature, webhook custody, protected trust
+policy, Ruleset migration, real unauthorized PR rejection, recovery,
+logging, retention, rollback and investigated PC verification remain
+NOT_DEPLOYED/NOT_TESTED. A production Check Run must be published by the
+independent App against the exact commit SHA, never from PR-authored input.
+
+Official sources:
+- https://docs.github.com/en/rest/pulls/reviews
+- https://docs.github.com/en/rest/pulls/pulls
+- https://docs.github.com/en/rest/collaborators/collaborators
+- https://docs.github.com/en/rest/apps/installations
+- https://docs.github.com/en/rest/checks/runs
+- https://docs.github.com/en/webhooks/using-webhooks/best-practices-for-using-webhooks
