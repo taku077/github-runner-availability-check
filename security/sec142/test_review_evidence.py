@@ -287,5 +287,121 @@ for label, mutate, fragment in CASES:
     setattr(ReviewEvidenceTests, "test_table_" + label, make_test())
 
 
+
+class ReviewAdversarialRegressionTests(unittest.TestCase):
+    """SEC152 post-CI hardening against review-history masking attacks."""
+
+    def setUp(self):
+        self.f = fixture()
+
+    def reject(self):
+        with self.assertRaises(Rejected):
+            compare_review_history(**self.f)
+
+    def replace_reviews(self, records):
+        for name in ("pages_before", "pages_after"):
+            self.f[name][0]["body"] = copy.deepcopy(records)
+
+    def test_changes_requested_then_comment_still_blocks(self):
+        other = {"id": 333, "login": "other", "type": "User"}
+        self.replace_reviews([
+            review(1, user=other, state="CHANGES_REQUESTED",
+                   submitted="2026-11-23T00:07:00Z"),
+            review(2, user=other, state="COMMENTED",
+                   submitted="2026-11-23T00:08:00Z"),
+            review(3, submitted="2026-11-23T00:10:00Z")])
+        self.reject()
+
+    def test_changes_requested_then_dismissed_still_blocks(self):
+        other = {"id": 333, "login": "other", "type": "User"}
+        self.replace_reviews([
+            review(1, user=other, state="CHANGES_REQUESTED",
+                   submitted="2026-11-23T00:07:00Z"),
+            review(2, user=other, state="DISMISSED",
+                   submitted="2026-11-23T00:08:00Z"),
+            review(3)])
+        self.reject()
+
+    def test_old_commit_approval_does_not_clear_request(self):
+        other = {"id": 333, "login": "other", "type": "User"}
+        self.replace_reviews([
+            review(1, user=other, state="CHANGES_REQUESTED",
+                   submitted="2026-11-23T00:07:00Z"),
+            review(2, user=other, state="APPROVED", commit=OLD,
+                   submitted="2026-11-23T00:08:00Z"),
+            review(3)])
+        self.reject()
+
+    def test_new_current_head_approval_clears_synthetic_request_only(self):
+        other = {"id": 333, "login": "other", "type": "User"}
+        self.replace_reviews([
+            review(1, user=other, state="CHANGES_REQUESTED",
+                   submitted="2026-11-23T00:07:00Z"),
+            review(2, user=other, state="APPROVED",
+                   submitted="2026-11-23T00:08:00Z"),
+            review(3)])
+        result = compare_review_history(**self.f).as_dict()
+        self.assertFalse(result["merge_authorized"])
+        self.assertFalse(result["actor_independence_attested"])
+
+    def test_approved_then_changes_requested_same_user_blocks(self):
+        self.replace_reviews([
+            review(1), review(2, state="CHANGES_REQUESTED",
+                              submitted="2026-11-23T00:11:00Z")])
+        self.reject()
+
+    def test_unhashable_review_state_fails_closed(self):
+        self.f["pages_before"][0]["body"][0]["state"] = ["APPROVED"]
+        self.reject()
+
+    def test_malformed_ipv6_url_fails_closed(self):
+        self.f["pages_before"][0]["request_url"] = "https://[broken/path"
+        self.reject()
+
+    def test_reviewer_id_reused_under_new_login_rejected(self):
+        self.replace_reviews([
+            review(1),
+            review(2, user={"id": 222, "login": "impersonator",
+                            "type": "User"},
+                   submitted="2026-11-23T00:11:00Z")])
+        self.reject()
+
+    def test_review_login_reused_under_new_id_rejected(self):
+        self.replace_reviews([
+            review(1),
+            review(2, user={"id": 333, "login": "human-reviewer",
+                            "type": "User"},
+                   submitted="2026-11-23T00:11:00Z")])
+        self.reject()
+
+    def test_duplicate_review_id_rejected(self):
+        self.replace_reviews([
+            review(1), review(1, submitted="2026-11-23T00:11:00Z")])
+        self.reject()
+
+    def test_reordered_review_id_rejected(self):
+        self.replace_reviews([
+            review(2), review(1, submitted="2026-11-23T00:11:00Z")])
+        self.reject()
+
+    def test_backwards_review_timestamp_rejected(self):
+        self.replace_reviews([
+            review(1), review(2, submitted="2026-11-23T00:09:00Z")])
+        self.reject()
+
+    def test_ambiguous_case_insensitive_header_rejected(self):
+        self.f["pages_before"][0]["headers"] = {
+            "Link": "", "link": ""}
+        self.reject()
+
+    def test_truncated_first_page_with_next_link_rejected(self):
+        self.f["pages_before"] = multi_page()[:1]
+        self.f["pages_after"] = copy.deepcopy(self.f["pages_before"])
+        self.reject()
+
+    def test_nonmonotonic_commit_authority_claim_rejected(self):
+        self.f["last_push_at_utc"] = "2026-11-23T00:14:00Z"
+        self.reject()
+
 if __name__ == "__main__":
     unittest.main()
