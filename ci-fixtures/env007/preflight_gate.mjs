@@ -39,7 +39,7 @@ function digest(buffer) {
 }
 
 export function verifyPreflight({ request, envelope, pinnedPublicKey, pinnedPublicKeySha256,
-                                  actualHeadSha, clockUtc, observedAuditHealthy, usedNonces }) {
+                                  actualHeadSha, actualFileBytes, clockUtc, observedAuditHealthy, usedNonces }) {
   const deny = (reason) => ({decision: 'DENY', reason, tool_invoked: false});
   if (observedAuditHealthy !== true) return deny('AUDIT_HEALTH_UNVERIFIED');
   if (!(usedNonces instanceof Set)) return deny('TRUSTED_NONCE_STATE_MISSING');
@@ -62,6 +62,8 @@ export function verifyPreflight({ request, envelope, pinnedPublicKey, pinnedPubl
         payload.path.startsWith('.github/workflows/env007-'))) return deny('PATH_NOT_ALLOWED');
   if (![payload.file_sha256, payload.instruction_sha256].every(
        x => typeof x === 'string' && SHA256_PATTERN.test(x))) return deny('INVALID_SHA256');
+  if (!Buffer.isBuffer(actualFileBytes)) return deny('ACTUAL_FILE_BYTES_MISSING');
+  if (digest(actualFileBytes) !== payload.file_sha256) return deny('ACTUAL_FILE_HASH_MISMATCH');
   if (typeof payload.expected_head_sha !== 'string' ||
       !SHA_PATTERN.test(payload.expected_head_sha) ||
       !SHA_PATTERN.test(actualHeadSha || '') ||
