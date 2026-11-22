@@ -188,3 +188,33 @@ https://www.sqlite.org/backup.html
 https://www.sqlite.org/wal.html
 https://docs.github.com/en/rest/checks/runs
 https://docs.github.com/en/webhooks/using-webhooks/best-practices-for-using-webhooks
+
+## SEC-147 — Check Run App source / exact PR HEAD / external ID candidate readback
+
+Added security/sec142/provider_readback.py and test_provider_readback.py.
+Source-only comparison rejects mismatched expected future independent GitHub App
+app.id (NOT existing GitHub Actions app 15368), head_sha, external_id / outbox
+intent ID, Check Run name pcfm-independent-admission, incomplete check listing,
+duplicate check runs, changed PR HEAD/base, stale intent, or failed check status.
+It also checks a matching get-by-ID record against the git-reference list.
+
+Every input is caller-supplied API-shaped synthetic data. There is no
+GitHub REST request, real registered App, independently protected credentials,
+verified installation or user identity, and no check publication or Ruleset
+change. The expected App ID value is not authenticated. Even a fully matching
+synthetic record yields SYNTHETIC_MATCH_UNTRUSTED_NOT_AUTHORIZED with all
+authorization, provenance, merge and actual enforcement flags FALSE.
+
+This pure comparison cannot prove that the list response includes every
+possible check run, nor prevent a commit from changing after the second
+PR readback. GitHub's git-ref check-list API has pagination/1000-suite limits;
+absence of a listed result does not prove historic absence. A future secure
+host must authenticate GitHub API and App configuration independently, ensure
+exact current PR and review state and a complete reconciliation query,
+and perform an external denial test before declaring a trusted merge gate.
+No true source-origin admission is accepted in SEC-147.
+
+Sources:
+https://docs.github.com/en/rest/checks/runs
+https://docs.github.com/en/rest/apps/apps
+https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/available-rules-for-rulesets
