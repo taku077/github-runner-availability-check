@@ -139,6 +139,9 @@ if __name__=="__main__":
     try:
         result=live()
     except (EvidenceError,OSError,ValueError) as exc:
-        print("RCA171_LIVE_NOT_VERIFIED "+type(exc).__name__,file=sys.stderr)
+        status=getattr(exc,"code",None)
+        print("RCA171_LIVE_NOT_VERIFIED "+type(exc).__name__ +
+              (" HTTP_STATUS="+str(status) if status is not None else ""),
+              file=sys.stderr)
         raise SystemExit(2)
     print(json.dumps(result,ensure_ascii=False,sort_keys=True,separators=(",",":")))
