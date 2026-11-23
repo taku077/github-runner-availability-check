@@ -48,7 +48,18 @@ function Test-Offline([string]$path,[string]$sha,[long]$bytes,[object[]]$expecte
         if(-not $ids.Add($id)){throw 'Duplicate expected ID'}
         $found=@($records | Where-Object {$_.record_id -eq $id})
         if($found.Count -ne 1){throw 'Record ID not unique/present'}
-        $ticks=[datetimeoffset]::Parse([string]$e.utc,[Globalization.CultureInfo]::InvariantCulture).UtcDateTime.Ticks
+        # ConvertFrom-Json on PowerShell 7 can materialize ISO 8601 as DateTime.
+        # Casting it back to [string] drops subsecond ticks by default.
+        if($e.utc -is [datetime]){
+            if($e.utc.Kind -eq [DateTimeKind]::Unspecified){throw 'UTC kind missing'}
+            $ticks=$e.utc.ToUniversalTime().Ticks
+        }elseif($e.utc -is [datetimeoffset]){
+            $ticks=$e.utc.UtcDateTime.Ticks
+        }elseif($e.utc -is [string] -and $e.utc.EndsWith('Z',[StringComparison]::Ordinal)){
+            $ticks=[datetimeoffset]::Parse([string]$e.utc,[Globalization.CultureInfo]::InvariantCulture).UtcDateTime.Ticks
+        }else{
+            throw 'Unsupported or ambiguous receipt UTC value'
+        }
         $eventMatches=($found[0].event_id -eq [int]$e.event_id)
         $sourceMatches=($found[0].source -ceq [string]$e.source)
         $utcMatches=($found[0].ticks -eq $ticks)
