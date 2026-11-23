@@ -59,3 +59,14 @@ jobs:
           echo "RCA174_PRIVATE_MIRROR=NOT_TESTED"
           echo "RCA174_PRIVATE_READ_GATE=NOT_DEPLOYED"
           echo "RCA174_NATIVE_NON_BYPASS=NOT_IMPLEMENTED"
+
+      - name: RCA175 immutable read backend on actual public Git mirror (optional)
+        id: rca175_reader
+        continue-on-error: true
+        run: python3 security/sec142/rca175_mirror_read_backend.py --live-public
+      - name: RCA175 explicit non-production result
+        if: always()
+        run: |
+          echo "RCA175_PUBLIC_READ_BACKEND=${{ steps.rca175_reader.outcome }}"
+          echo "RCA175_PRIVATE_READ_MCP=NOT_DEPLOYED"
+          echo "RCA175_NATIVE_WRITE_DENIAL=NOT_ESTABLISHED"
