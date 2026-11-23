@@ -49,9 +49,12 @@ function Test-Offline([string]$path,[string]$sha,[long]$bytes,[object[]]$expecte
         $found=@($records | Where-Object {$_.record_id -eq $id})
         if($found.Count -ne 1){throw 'Record ID not unique/present'}
         $ticks=[datetimeoffset]::Parse([string]$e.utc,[Globalization.CultureInfo]::InvariantCulture).UtcDateTime.Ticks
-        if($found[0].event_id -ne [int]$e.event_id -or
-           $found[0].source -cne [string]$e.source -or
-           $found[0].ticks -ne $ticks){throw 'Native EVTX record differs from receipt'}
+        $eventMatches=($found[0].event_id -eq [int]$e.event_id)
+        $sourceMatches=($found[0].source -ceq [string]$e.source)
+        $utcMatches=($found[0].ticks -eq $ticks)
+        if(-not ($eventMatches -and $sourceMatches -and $utcMatches)){
+            throw ('Native EVTX mismatch event_id=' + $eventMatches + ' provider=' + $sourceMatches + ' utc_ticks=' + $utcMatches)
+        }
     }
     if((Get-FileHash -LiteralPath $p -Algorithm SHA256).Hash.ToLowerInvariant() -cne $sha){throw 'EVTX changed while reading'}
     return $records.Count
