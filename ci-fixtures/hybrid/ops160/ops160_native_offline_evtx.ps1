@@ -53,7 +53,7 @@ function Test-Offline([string]$path,[string]$sha,[long]$bytes,[object[]]$expecte
         $sourceMatches=($found[0].source -ceq [string]$e.source)
         $utcMatches=($found[0].ticks -eq $ticks)
         if(-not ($eventMatches -and $sourceMatches -and $utcMatches)){
-            throw ('Native EVTX mismatch event_id=' + $eventMatches + ' provider=' + $sourceMatches + ' utc_ticks=' + $utcMatches)
+            throw ('Native EVTX mismatch event_id=' + $eventMatches + ' provider=' + $sourceMatches + ' utc_ticks=' + $utcMatches + ' delta_ticks=' + ([long]$found[0].ticks - [long]$ticks))
         }
     }
     if((Get-FileHash -LiteralPath $p -Algorithm SHA256).Hash.ToLowerInvariant() -cne $sha){throw 'EVTX changed while reading'}
