@@ -27,5 +27,13 @@ jobs:
           echo "SEC142_EXTERNAL_GITHUB_APP_DEPLOYED=FALSE"
           echo "SEC142_INDEPENDENT_ENFORCEMENT=NOT_ACCEPTED"
 
-      - name: RCA171 live public provider readback (read-only, not an authority)
+      - name: RCA171 live public provider readback (read-only, optional)
+        id: rca171_live
+        continue-on-error: true
         run: python3 security/sec142/rca171_provider_evidence.py --live
+      - name: RCA171 live verification state (never an enforcement gate)
+        if: always()
+        run: |
+          echo "RCA171_LIVE_STEP_OUTCOME=${{ steps.rca171_live.outcome }}"
+          echo "RCA171_PROVIDER_ATTESTATION=NOT_ACQUIRED"
+          echo "RCA171_NATIVE_NON_BYPASS=NOT_IMPLEMENTED"

@@ -29,3 +29,22 @@ Sources:
 - https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/security-log-events
 - https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/reviewing-your-security-log
 - https://cheatsheetseries.owasp.org/cheatsheets/AI_Agent_Security_Cheat_Sheet.html
+
+## Actual CI execution and external readback limitation (2026-11-24 JST)
+
+- Public PR#4 commit 439c0caf263a460cb53b84e9dbc06b3d0dd7236c:
+  GitHub Actions run 45225258013, 750/750 unittest PASS; unauthenticated
+  public REST live readback FAILED (HTTPError).
+- Diagnostic commit b6b7b5187adcb3e6fba515d953f77fe8cae86df3:
+  run 45225610430, 750/750 unittest PASS; live step HTTP_STATUS=403.
+  The 403 cause is NOT_DETERMINED (rate limit / authorization / other).
+- This optional live probe deliberately receives no GITHUB_TOKEN or PAT.
+  A missing/failed readback is explicitly marked NOT_VERIFIED, never treated
+  as independent authorization or authenticated-actor evidence.
+- A failure of this supplemental public REST check does not invalidate the
+  local pure-unit 750-test security-prototype smoke checks. The CI run summary
+  alone is not sufficient to assert the live readback succeeded; inspect
+  RCA171_LIVE_STEP_OUTCOME.
+- ChatGPT's live GitHub connector separately read the historical commits,
+  but that connector observation is not the public CI runner's successful
+  result, nor a third-party signed audit.
