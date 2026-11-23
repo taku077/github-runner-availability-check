@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any
 
 PRIVATE_REPO = "taku077/pcfm-forensic-dev"
 PUBLIC_REPO = "taku077/github-runner-availability-check"
@@ -149,25 +149,38 @@ def simulate_policy(*, tool_name: Any, parameters: Any,
 
 
 class SimulatedDispatch:
-    """Local fake-handler adapter, never wired as native tool intercept.
+    """SEC158: no-op shape inspector with *zero* injectable execution hooks.
 
-    Handler is always a recorder in tests, not a network client.
+    A former SEC157 implementation took an arbitrary callback and called it
+    for safe-shaped inputs. That callback could be a real network/connector
+    client if accidentally miswired. This class deliberately takes NO
+    handler, network session, credential, callback or tool dispatcher.
+    Even a successful shape match returns (decision, None). It does not
+    intercept or authorize native ChatGPT tools.
     """
-    def __init__(self, handler: Callable[[str, dict], Any]):
-        if not callable(handler):
-            raise TypeError("test handler must be callable")
-        self._handler = handler
-        self.calls = 0
+
+    __slots__ = ("evaluations", "matched_shapes", "denied_shapes")
+
+    def __init__(self) -> None:
+        self.evaluations = 0
+        self.matched_shapes = 0
+        self.denied_shapes = 0
 
     def dispatch(self, *, tool_name: Any, parameters: Any,
                  source_label: Any = None,
-                 owner_override_claim: Any = None) -> tuple[ScopedDecision, Any]:
+                 owner_override_claim: Any = None) -> tuple[ScopedDecision, None]:
+        """Legacy test method name; no function is ever dispatched.
+
+        Counts only local policy evaluations; never stores payloads, invokes
+        callbacks or creates a real tool invocation/authorization receipt.
+        """
         decision = simulate_policy(
             tool_name=tool_name, parameters=parameters,
             source_label=source_label,
             owner_override_claim=owner_override_claim)
-        if decision.status != "SIMULATION_SCOPE_MATCH_NOT_LIVE_AUTHORIZATION":
-            return decision, None
-        # This is a mock execution counter, not a real tool dispatch event.
-        self.calls += 1
-        return decision, self._handler(tool_name, dict(parameters))
+        self.evaluations += 1
+        if decision.status == "SIMULATION_SCOPE_MATCH_NOT_LIVE_AUTHORIZATION":
+            self.matched_shapes += 1
+        else:
+            self.denied_shapes += 1
+        return decision, None
