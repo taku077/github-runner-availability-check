@@ -26,3 +26,6 @@ jobs:
           echo "SEC142_SYNTHETIC_ONLY=TRUE"
           echo "SEC142_EXTERNAL_GITHUB_APP_DEPLOYED=FALSE"
           echo "SEC142_INDEPENDENT_ENFORCEMENT=NOT_ACCEPTED"
+
+      - name: RCA171 live public provider readback (read-only, not an authority)
+        run: python3 security/sec142/rca171_provider_evidence.py --live
