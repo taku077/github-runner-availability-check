@@ -15,7 +15,7 @@ def later_review(rid, *, user_id=67890, state="APPROVED", sha=HEAD):
         "id": rid,
         "state": state,
         "commit_id": sha,
-        "user": {"id": user_id}
+        "user": {"id": user_id, "type": "User"}
     }
 
 
@@ -171,6 +171,50 @@ class RulesetReviewHardeningTests(unittest.TestCase):
                      "check_written", "merge_authorized",
                      "production_deployed"):
             self.assertFalse(result[name], name)
+
+    # SEC159: account-type labels are structure only, not human identity proof.
+    # A missing/fake PR author ID previously caused the approval account to
+    # be counted as independent even though self-approval could not be ruled out.
+    def test_missing_pr_author_fails_closed(self):
+        self.f["pull_request"].pop("user")
+        self.assertMissingApproval("PR_AUTHOR_ID_NOT_VERIFIED")
+
+    def test_pr_author_id_zero_fails_closed(self):
+        self.f["pull_request"]["user"]["id"] = 0
+        self.assertMissingApproval("PR_AUTHOR_ID_NOT_VERIFIED")
+
+    def test_pr_author_id_boolean_fails_closed(self):
+        self.f["pull_request"]["user"]["id"] = True
+        self.assertMissingApproval("PR_AUTHOR_ID_NOT_VERIFIED")
+
+    def test_pr_author_type_missing_fails_closed(self):
+        self.f["pull_request"]["user"].pop("type")
+        self.assertMissingApproval("PR_AUTHOR_ID_NOT_VERIFIED")
+
+    def test_pr_author_bot_type_fails_closed(self):
+        self.f["pull_request"]["user"]["type"] = "Bot"
+        self.assertMissingApproval("PR_AUTHOR_ID_NOT_VERIFIED")
+
+    def test_reviewer_type_missing_fails_closed(self):
+        self.f["reviews"][0]["user"].pop("type")
+        self.assertMissingApproval("REVIEW_ACTOR_TYPE_NOT_VERIFIED",
+                                   "REVIEW_HISTORY_AMBIGUOUS")
+
+    def test_reviewer_bot_type_fails_closed(self):
+        self.f["reviews"][0]["user"]["type"] = "Bot"
+        self.assertMissingApproval("REVIEW_ACTOR_TYPE_NOT_VERIFIED",
+                                   "REVIEW_HISTORY_AMBIGUOUS")
+
+    def test_reviewer_type_list_fails_closed(self):
+        self.f["reviews"][0]["user"]["type"] = ["User"]
+        self.assertMissingApproval("REVIEW_ACTOR_TYPE_NOT_VERIFIED",
+                                   "REVIEW_HISTORY_AMBIGUOUS")
+
+    def test_user_type_cannot_prove_human_separation(self):
+        report = audit_readonly_gate(**self.f).as_dict()
+        self.assertFalse(report["reviewer_human_independence_attested"])
+        self.assertFalse(report["operator_identity_attested"])
+        self.assertFalse(report["merge_authorized"])
 
 
 if __name__ == "__main__":

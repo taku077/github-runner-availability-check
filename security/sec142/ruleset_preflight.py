@@ -186,13 +186,21 @@ def audit_readonly_gate(*, repository: Any, ruleset: Any,
     review_ids: set[int] = set()
     previous_review_id = 0
     invalid_history = False
-    submitter = _object(pr.get("user")).get("id")
+    author = _object(pr.get("user"))
+    submitter = author.get("id")
+    author_verified = _positive(submitter) and author.get("type") == "User"
+    if not author_verified:
+        reasons.add("PR_AUTHOR_ID_NOT_VERIFIED")
     for review in review_rows:
         item = _object(review)
-        uid = _object(item.get("user")).get("id")
+        actor = _object(item.get("user"))
+        uid = actor.get("id")
+        if actor.get("type") != "User":
+            reasons.add("REVIEW_ACTOR_TYPE_NOT_VERIFIED")
         rid, state, commit = (item.get("id"), item.get("state"),
                               item.get("commit_id"))
-        if (not _positive(uid) or not _positive(rid) or
+        if (not _positive(uid) or actor.get("type") != "User" or
+                not _positive(rid) or
                 rid in review_ids or rid <= previous_review_id or
                 type(state) is not str or
                 state not in ("APPROVED", "CHANGES_REQUESTED",
@@ -217,7 +225,7 @@ def audit_readonly_gate(*, repository: Any, ruleset: Any,
         uid for uid, item in last_reviews.items()
         if uid != submitter and item["state"] == "APPROVED" and
            item["commit_id"] == actual_head
-    } if not invalid_history and not unresolved_requests else set()
+    } if author_verified and not invalid_history and not unresolved_requests else set()
     if not (_positive(count) and len(approved_ids) >= count):
         reasons.add("CURRENT_SHA_APPROVALS_NOT_OBSERVED")
 

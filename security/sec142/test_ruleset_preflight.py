@@ -44,7 +44,7 @@ def live_shape():
             ]},
         "pull_request": {
             "number": 4, "state": "open", "draft": True, "merged": False,
-            "user": {"id": 344928446, "login": "taku077"},
+            "user": {"id": 344928446, "login": "taku077", "type": "User"},
             "head": {"sha": HEAD, "repo": {"id": REPO_ID}},
             "base": {"sha": BASE, "ref": "main",
                      "repo": {"id": REPO_ID}}},
@@ -76,7 +76,7 @@ def fantasy_green():
         "integration_id": APP})
     f["pull_request"]["draft"] = False
     f["reviews"] = [{"id": 1, "state": "APPROVED",
-                     "commit_id": HEAD, "user": {"id": 67890}}]
+                     "commit_id": HEAD, "user": {"id": 67890, "type": "User"}}]
     f["check_run_list"]["total_count"] += 1
     f["check_run_list"]["check_runs"].append({
         "id": 99999, "name": "pcfm-independent-admission",
@@ -133,7 +133,7 @@ class RulesetPreflightTests(unittest.TestCase):
     def test_no_human_attestation_even_with_two_approvals(self):
         f = fantasy_green()
         f["reviews"].append({"id": 2, "state": "APPROVED",
-                             "commit_id": HEAD, "user": {"id": 67891}})
+                             "commit_id": HEAD, "user": {"id": 67891, "type": "User"}})
         f["ruleset"]["rules"][2]["parameters"][
             "required_approving_review_count"] = 2
         self.assertBlocked(f, "EXTERNAL_OPERATOR_AND_PROVIDER_AUTHENTICATION_NOT_PROVEN")
