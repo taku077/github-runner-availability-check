@@ -15,15 +15,6 @@ SRC = "mcp__GitHub__"
 SHA = "a" * 40
 
 
-class Recorder:
-    def __init__(self):
-        self.calls = []
-
-    def __call__(self, tool, params):
-        self.calls.append((tool, copy.deepcopy(params)))
-        return {"simulated_receipt_only": True}
-
-
 def query(tool, repo=PRIVATE_REPO, **kwargs):
     repo_key = ("repository_full_name" if tool in
                 ("fetch_file", "get_pr_info") else "repo_full_name")
@@ -37,8 +28,7 @@ def paused_query(tool="fetch_workflow_run_jobs", **extra):
 
 class SimulatedDispatchTests(unittest.TestCase):
     def setUp(self):
-        self.recorder = Recorder()
-        self.dispatch = SimulatedDispatch(self.recorder)
+        self.dispatch = SimulatedDispatch()
 
     def exercise_denied(self, request, *, expected=None, **metadata):
         decision, output = self.dispatch.dispatch(
@@ -48,8 +38,7 @@ class SimulatedDispatchTests(unittest.TestCase):
         if expected is not None:
             self.assertEqual(record["reason"], expected)
         self.assertIsNone(output)
-        self.assertEqual(self.dispatch.calls, 0)
-        self.assertEqual(self.recorder.calls, [])
+        self.assertEqual(self.dispatch.matched_shapes, 0)
         self.assertFalse(record["real_tool_dispatched"])
         self.assertFalse(record["native_tool_intercepted"])
         self.assertFalse(record["private_ci_reopened"])
@@ -60,9 +49,8 @@ class SimulatedDispatchTests(unittest.TestCase):
         self.assertEqual(
             record["status"], "SIMULATION_SCOPE_MATCH_NOT_LIVE_AUTHORIZATION")
         self.assertEqual(record["reason"], expected)
-        self.assertEqual(self.dispatch.calls, 1)
-        self.assertEqual(len(self.recorder.calls), 1)
-        self.assertEqual(output, {"simulated_receipt_only": True})
+        self.assertEqual(self.dispatch.matched_shapes, 1)
+        self.assertIsNone(output)
         for key in ("native_tool_intercepted", "caller_identity_verified",
                     "external_policy_verified", "owner_exception_verified",
                     "production_enforcement", "private_ci_reopened",
@@ -139,14 +127,14 @@ class SimulatedDispatchTests(unittest.TestCase):
             path="security/sec142/dispatch_preflight.py",
             ref=SHA), "PUBLIC_CI_READ_SHAPE_ONLY")
 
-    def test_mock_dispatch_does_not_elevate_future_prohibited_request(self):
+    def test_mock_inspection_does_not_elevate_future_prohibited_request(self):
         decision, _ = self.dispatch.dispatch(**query(
             "fetch_file", path="docs/HANDOFF_CURRENT.md"))
         self.assertNotEqual(decision.status, "SIMULATED_DENY")
         next_decision, outcome = self.dispatch.dispatch(**paused_query())
         self.assertEqual(next_decision.status, "SIMULATED_DENY")
         self.assertIsNone(outcome)
-        self.assertEqual(self.dispatch.calls, 1)
+        self.assertEqual(self.dispatch.matched_shapes, 1)
 
 
 PRIVATE_BLOCKED = [
