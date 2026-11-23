@@ -104,7 +104,9 @@ def simulate_policy(*, tool_name: Any, parameters: Any,
         if tool != "fetch_file":
             return ScopedDecision(
                 "SIMULATED_DENY", "PAUSED_PRIVATE_CI_AND_NON_DOC_TOOL", tool)
-        if (parameters.get("path") not in PRIVATE_SAFE_DOCS or
+        private_path = parameters.get("path")
+        if (type(private_path) is not str or
+                private_path not in PRIVATE_SAFE_DOCS or
                 ("ref" in parameters and
                  not _valid_ref(parameters["ref"]))):
             return ScopedDecision(
