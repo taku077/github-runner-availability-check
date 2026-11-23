@@ -1,0 +1,36 @@
+name: OPS160 public disposable Windows native offline EVTX re-read
+on:
+  pull_request:
+    paths:
+      - 'ci-fixtures/hybrid/ops160/**'
+      - '.github/workflows/ops160-offline-evtx-reader.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  native-offline-evtx:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-2022, windows-2025]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    steps:
+      - name: Checkout untrusted public fixture only without persisted credentials
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Produce two controlled benign Application events on disposable runner
+        shell: pwsh
+        run: ./ci-fixtures/hybrid/ops047/ops047_preserve_native_evtx.ps1
+      - name: Read exported EVTX using distinct native Windows API and reject altered copies
+        shell: pwsh
+        run: ./ci-fixtures/hybrid/ops160/ops160_native_offline_evtx.ps1 -EvtxPath (Join-Path $env:RUNNER_TEMP 'ops047-public-receipt/controlled-application.evtx') -ReceiptPath (Join-Path $env:RUNNER_TEMP 'ops047-public-receipt/receipt.json')
+      - name: Upload metadata only and never upload native EVTX
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: ops160-metadata-${{ matrix.os }}
+          path: ${{ runner.temp }}/ops160-public-metadata/receipt.json
+          if-no-files-found: error
+          retention-days: 2
