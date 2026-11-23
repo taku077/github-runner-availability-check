@@ -37,3 +37,13 @@ jobs:
           echo "RCA171_LIVE_STEP_OUTCOME=${{ steps.rca171_live.outcome }}"
           echo "RCA171_PROVIDER_ATTESTATION=NOT_ACQUIRED"
           echo "RCA171_NATIVE_NON_BYPASS=NOT_IMPLEMENTED"
+
+      - name: RCA172 live ruleset branch-scope audit (read-only, optional)
+        id: rca172_scope
+        continue-on-error: true
+        run: python3 security/sec142/rca172_ruleset_scope.py --live
+      - name: RCA172 evidence scope state (never an enforcement gate)
+        if: always()
+        run: |
+          echo "RCA172_SCOPE_STEP_OUTCOME=${{ steps.rca172_scope.outcome }}"
+          echo "RCA172_NATIVE_NON_BYPASS=NOT_IMPLEMENTED"
