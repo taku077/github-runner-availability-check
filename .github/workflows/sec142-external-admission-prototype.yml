@@ -70,3 +70,17 @@ jobs:
           echo "RCA175_PUBLIC_READ_BACKEND=${{ steps.rca175_reader.outcome }}"
           echo "RCA175_PRIVATE_READ_MCP=NOT_DEPLOYED"
           echo "RCA175_NATIVE_WRITE_DENIAL=NOT_ESTABLISHED"
+
+      - name: RCA176 real MCP SDK loopback (optional public-only)
+        id: rca176_mcp
+        continue-on-error: true
+        run: |
+          python3 -m venv "$RUNNER_TEMP/rca176-venv"
+          "$RUNNER_TEMP/rca176-venv/bin/python" -m pip install --disable-pip-version-check --no-input mcp==2.0.0
+          "$RUNNER_TEMP/rca176-venv/bin/python" security/sec142/rca176_loopback_mcp.py
+      - name: RCA176 transport verification state
+        if: always()
+        run: |
+          echo "RCA176_LOOPBACK_OUTCOME=${{ steps.rca176_mcp.outcome }}"
+          echo "RCA176_OAUTH=NOT_IMPLEMENTED"
+          echo "RCA176_NATIVE_NON_BYPASS=NOT_IMPLEMENTED"
