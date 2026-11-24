@@ -84,3 +84,15 @@ jobs:
           echo "RCA176_LOOPBACK_OUTCOME=${{ steps.rca176_mcp.outcome }}"
           echo "RCA176_OAUTH=NOT_IMPLEMENTED"
           echo "RCA176_NATIVE_NON_BYPASS=NOT_IMPLEMENTED"
+
+      - name: RCA177 signed resource server HTTP test (optional public-only)
+        id: rca177_auth
+        continue-on-error: true
+        run: |
+          "$RUNNER_TEMP/rca176-venv/bin/python" security/sec142/rca177_signed_resource_server.py
+      - name: RCA177 explicit authentication boundary
+        if: always()
+        run: |
+          echo "RCA177_SIGNED_RESOURCE_OUTCOME=${{ steps.rca177_auth.outcome }}"
+          echo "RCA177_EXTERNAL_OAUTH=NOT_CONNECTED"
+          echo "RCA177_NATIVE_NON_BYPASS=NOT_IMPLEMENTED"
