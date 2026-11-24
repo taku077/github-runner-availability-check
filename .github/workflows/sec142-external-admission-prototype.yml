@@ -96,3 +96,15 @@ jobs:
           echo "RCA177_SIGNED_RESOURCE_OUTCOME=${{ steps.rca177_auth.outcome }}"
           echo "RCA177_EXTERNAL_OAUTH=NOT_CONNECTED"
           echo "RCA177_NATIVE_NON_BYPASS=NOT_IMPLEMENTED"
+
+      - name: RCA178 local auth lifecycle HTTP test (optional public-only)
+        id: rca178_auth
+        continue-on-error: true
+        run: |
+          "$RUNNER_TEMP/rca176-venv/bin/python" security/sec142/rca178_auth_lifecycle.py
+      - name: RCA178 lifecycle boundary
+        if: always()
+        run: |
+          echo "RCA178_LIFECYCLE_OUTCOME=${{ steps.rca178_auth.outcome }}"
+          echo "RCA178_EXTERNAL_OAUTH=NOT_CONNECTED"
+          echo "RCA178_NATIVE_NON_BYPASS=NOT_IMPLEMENTED"

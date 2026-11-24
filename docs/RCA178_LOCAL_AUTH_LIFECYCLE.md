@@ -1,0 +1,5 @@
+# RCA178 local authorization lifecycle
+
+Actual loopback MCP HTTP tests using official SDK 2.0.0 and ephemeral RSA keys.
+A test-only local authorization state file holds public keys and revoked jti values. The verifier reads it on every request. Atomic replacement is used for normal state updates. It rejects unknown or retired kid, revoked jti, absent or malformed state. It accepts both keys during explicit overlap and the remaining active key after recovery. Tests also reopen state in a fresh verifier object; **not a full service/process restart**. Restore is of an exact test-state byte representation, not a forensic backup. No secrets or private Git data are used. This is not remote JWKS retrieval, RFC 7009 endpoint, RFC 7662 introspection, durable external revocation, tamper/rollback resistance, replay protection, or production OAuth. No GitHub native writes are blocked by this trial. A stolen still-active bearer remains usable. The file and test keys disappear at end of CI.
+Sources: https://www.rfc-editor.org/rfc/rfc7009.html https://www.rfc-editor.org/rfc/rfc7662.html https://py.sdk.modelcontextprotocol.io/run/authorization/
