@@ -120,3 +120,33 @@ jobs:
           echo "RCA179_RESTART_OUTCOME=${{ steps.rca179_restart.outcome }}"
           echo "RCA179_EXTERNAL_ANCHOR=NOT_DEPLOYED"
           echo "RCA179_NATIVE_NON_BYPASS=NOT_IMPLEMENTED"
+
+  rca186-local-preview:
+    name: rca186-local-workerd-not-production
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    permissions:
+      contents: read
+    env:
+      WRANGLER_SEND_METRICS: "false"
+      CI: "true"
+    defaults:
+      run:
+        working-directory: security/rca186
+    steps:
+      - name: Checkout untrusted PR with no persisted credentials
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Install pinned Wrangler in ephemeral runner
+        run: |
+          node --version
+          npm install --no-save --package-lock=false --no-audit --no-fund wrangler@4.161.0
+          ./node_modules/.bin/wrangler --version
+      - name: Validate candidate bundle without uploading
+        run: |
+          ./node_modules/.bin/wrangler deploy --config wrangler.json --dry-run --outdir "$RUNNER_TEMP/rca186-bundle"
+          find "$RUNNER_TEMP/rca186-bundle" -type f -exec sha256sum {} +
+          echo RCA186_DRY_RUN=PASS
+      - name: Local workerd SQLite fixture and deny-only candidate
+        run: python3 -u test/run.py
