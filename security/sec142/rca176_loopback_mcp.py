@@ -86,6 +86,7 @@ async def roundtrip(mirror, env):
     from mcp import Client
     from mcp.client.streamable_http import streamable_http_client
     import uvicorn
+    import httpx2
     counts={"search":0,"fetch":0,"http_denied":0,"http_allowed":0}
     token=secrets.token_urlsafe(32)
     mcp=make_server(mirror,env,counts)
@@ -114,7 +115,9 @@ async def roundtrip(mirror, env):
             wrong_token=await asyncio.to_thread(denied_status,url,"not-valid")
             if (no_token,wrong_token)!=(401,401) or counts["search"] or counts["fetch"]:
                 raise RuntimeError("AUTH_NEGATIVE_TEST_FAILED")
-            async with Client(streamable_http_client(url,headers={"Authorization":"Bearer "+token})) as client:
+            async with (httpx2.AsyncClient(headers={"Authorization":"Bearer "+token},
+                                          trust_env=False, timeout=10.0) as http_client,
+                        Client(streamable_http_client(url,http_client=http_client)) as client):
                 tools=await client.list_tools()
                 names=sorted(t.name for t in tools.tools)
                 if names!=["fetch","search"]:
