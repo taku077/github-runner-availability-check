@@ -125,8 +125,6 @@ jobs:
     name: rca186-local-workerd-not-production
     runs-on: ubuntu-24.04
     timeout-minutes: 6
-    permissions:
-      contents: read
     env:
       WRANGLER_SEND_METRICS: "false"
       CI: "true"
