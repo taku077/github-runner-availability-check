@@ -108,3 +108,15 @@ jobs:
           echo "RCA178_LIFECYCLE_OUTCOME=${{ steps.rca178_auth.outcome }}"
           echo "RCA178_EXTERNAL_OAUTH=NOT_CONNECTED"
           echo "RCA178_NATIVE_NON_BYPASS=NOT_IMPLEMENTED"
+
+      - name: RCA179 subprocess restart and state integrity (optional public-only)
+        id: rca179_restart
+        continue-on-error: true
+        run: |
+          "$RUNNER_TEMP/rca176-venv/bin/python" security/sec142/rca179_restart_integrity.py
+      - name: RCA179 restart boundary
+        if: always()
+        run: |
+          echo "RCA179_RESTART_OUTCOME=${{ steps.rca179_restart.outcome }}"
+          echo "RCA179_EXTERNAL_ANCHOR=NOT_DEPLOYED"
+          echo "RCA179_NATIVE_NON_BYPASS=NOT_IMPLEMENTED"
