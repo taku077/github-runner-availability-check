@@ -173,25 +173,31 @@ async def run_http(mirror,env):
             async with httpx2.AsyncClient(trust_env=False,timeout=8.0) as probe:
                 async def request(name,value,expected):
                     before=dict(counts)
-                    response=await probe.post(resource,headers={
-                        "Authorization":"Bearer "+value,
-                        "Accept":"application/json, text/event-stream",
-                        "MCP-Protocol-Version":"2026-07-28"},json={
-                        "jsonrpc":"2.0","id":1,"method":"tools/call",
-                        "params":{"name":"fetch","arguments":{"id":backend.SNAPSHOT_SHA+":README.md"}}})
-                    statuses[name]=response.status_code
-                    if response.status_code!=expected:
-                        raise RuntimeError("STATUS_"+name+"_"+str(response.status_code))
-                    if expected!=200 and counts!=before:
-                        raise RuntimeError("DENIED_HANDLER_EXECUTED_"+name)
                     if expected==200:
-                        payload=response.json()
-                        result=payload.get("result",{})
-                        if result.get("isError") or counts["fetch"]!=before["fetch"]+1:
-                            raise RuntimeError("VALID_FETCH_FAILED_"+name)
-                        document=json.loads(result["content"][0]["text"])
-                        if hashlib.sha256(document["text"].encode()).hexdigest()!=document["sha256"]:
-                            raise RuntimeError("HASH_MISMATCH")
+                        async with (httpx2.AsyncClient(headers={"Authorization":"Bearer "+value},
+                                      trust_env=False,timeout=8.0) as http_client,
+                                    Client(streamable_http_client(resource,http_client=http_client)) as client):
+                            result=await client.call_tool("fetch",{"id":backend.SNAPSHOT_SHA+":README.md"})
+                            document=result_object(result)
+                            if client.protocol_version!="2026-07-28":
+                                raise RuntimeError("PROTOCOL_MISMATCH")
+                            if counts["fetch"]!=before["fetch"]+1:
+                                raise RuntimeError("VALID_FETCH_FAILED_"+name)
+                            if hashlib.sha256(document["text"].encode()).hexdigest()!=document["sha256"]:
+                                raise RuntimeError("HASH_MISMATCH")
+                            statuses[name]="MCP_FETCH_PASS"
+                    else:
+                        response=await probe.post(resource,headers={
+                            "Authorization":"Bearer "+value,
+                            "Accept":"application/json, text/event-stream",
+                            "MCP-Protocol-Version":"2026-07-28"},json={
+                            "jsonrpc":"2.0","id":1,"method":"tools/call",
+                            "params":{"name":"fetch","arguments":{"id":backend.SNAPSHOT_SHA+":README.md"}}})
+                        statuses[name]=response.status_code
+                        if response.status_code!=expected:
+                            raise RuntimeError("STATUS_"+name+"_"+str(response.status_code))
+                        if counts!=before:
+                            raise RuntimeError("DENIED_HANDLER_EXECUTED_"+name)
                 await request("initial_old",old,200)
                 await request("unknown_new_kid",new,401)
                 atomic_state(state_path,{"old":private.public_key(),"new":rotated.public_key()},set())
