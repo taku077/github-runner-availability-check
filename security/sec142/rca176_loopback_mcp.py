@@ -82,6 +82,21 @@ def denied_status(url, token=None):
     except HTTPError as exc:
         return exc.code
 
+def result_object(result):
+    """Validate SDK text JSON and structured data without assuming either exists."""
+    if result.is_error:
+        raise RuntimeError("MCP_TOOL_ERROR")
+    structured=result.structured_content
+    blocks=result.content
+    if len(blocks)!=1 or blocks[0].type!="text":
+        raise RuntimeError("MCP_RESULT_SHAPE")
+    data=json.loads(blocks[0].text)
+    if not isinstance(data,dict):
+        raise RuntimeError("MCP_RESULT_NOT_OBJECT")
+    if structured is not None and structured!=data:
+        raise RuntimeError("MCP_STRUCTURED_TEXT_MISMATCH")
+    return data
+
 async def roundtrip(mirror, env):
     from mcp import Client
     from mcp.client.streamable_http import streamable_http_client
@@ -125,13 +140,13 @@ async def roundtrip(mirror, env):
                 search_result=await client.call_tool("search",{"query":"runner"})
                 if search_result.is_error:
                     raise RuntimeError("SEARCH_FAILED")
-                matches=search_result.structured_content["results"]
+                matches=result_object(search_result)["results"]
                 if len(matches)!=1:
                     raise RuntimeError("SEARCH_RESULT_MISMATCH")
                 doc=await client.call_tool("fetch",{"id":matches[0]["id"]})
                 if doc.is_error:
                     raise RuntimeError("FETCH_FAILED")
-                result=doc.structured_content
+                result=result_object(doc)
                 digest=hashlib.sha256(result["text"].encode("utf-8")).hexdigest()
                 if digest!=result["sha256"]:
                     raise RuntimeError("HASH_MISMATCH")
