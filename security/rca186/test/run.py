@@ -149,3 +149,34 @@ with tempfile.TemporaryDirectory(dir=ROOT, prefix="scheduled-fixture-") as tmp, 
         assert get(url) == saved
         print("SYNTHETIC_SCHEDULED_RESTART_NO_WRITE=PASS",flush=True)
 print("SYNTHETIC_HOSTED_CRON=NOT_RUN",flush=True)
+
+# Build the integrated deny-only module, not the HTTP-accessible local test driver.
+# All names and dates are synthetic; no provider credentials, upload, or real schedules.
+with tempfile.TemporaryDirectory(dir=ROOT, prefix="integrated-fixture-") as tmp, tempfile.TemporaryDirectory() as state:
+    tmp = Path(tmp)
+    base = (ROOT/"src/worker.js").read_text(encoding="utf-8")
+    functions = SCHEDULED_ENTRY.split("export async function runProbe",1)[1].split("const slot=Date.UTC(",1)[0]
+    anchor = "export default {\n  async fetch()"
+    assert base.count(anchor) == 1
+    module = base.replace(anchor, "export async function runProbe"+functions+
+        "\nconst CONFIG = Object.freeze({armed:false,slotMs:null,cron:null});\n"+
+        "export default {\n  scheduled: buildScheduled(runProbe,CONFIG),\n  async fetch()")
+    assert "/fixture/state" not in module and "armed:true" not in module
+    (tmp/"entry.js").write_text(module, encoding="utf-8")
+    config = json.loads((ROOT/"wrangler.fixture.json").read_text(encoding="utf-8"))
+    config.update(name="synthetic-integrated-local-only",main="entry.js")
+    assert config["workers_dev"] is False and config["preview_urls"] is False and "triggers" not in config
+    (tmp/"wrangler.json").write_text(json.dumps(config),encoding="utf-8")
+    subprocess.run([str(ROOT/"node_modules/.bin/wrangler"),"deploy","--config",str(tmp/"wrangler.json"),
+        "--dry-run","--outdir",str(tmp/"bundle")],cwd=ROOT,check=True)
+    import hashlib
+    print("SYNTHETIC_INTEGRATED_SOURCE_SHA256="+hashlib.sha256(module.encode()).hexdigest(),flush=True)
+    print("SYNTHETIC_INTEGRATED_DRY_RUN=PASS",flush=True)
+    with server(str(tmp/"wrangler.json"),Path(state),scheduled=True) as url:
+        for endpoint in ("/","/fixture/state","/fixture/cas","/arbitrary"):
+            assert req(url,endpoint)[0] == 403
+        assert req(url,"/fixture/cas",{"expected":0,"previous":ZERO,"next":A})[0] == 403
+        result = fire(url,cron,slot)
+        assert result["noRetry"] is False, result
+        assert req(url,"/fixture/state")[0] == 403
+    print("SYNTHETIC_INTEGRATED_DISARMED_DENY=PASS",flush=True)
