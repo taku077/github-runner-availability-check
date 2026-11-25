@@ -1,0 +1,23 @@
+{
+  "name": "pcfm-control-gateway",
+  "main": "src/worker.js",
+  "compatibility_date": "2026-11-01",
+  "workers_dev": false,
+  "preview_urls": false,
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "CHECKPOINT",
+        "class_name": "Checkpoint"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": [
+        "Checkpoint"
+      ]
+    }
+  ]
+}

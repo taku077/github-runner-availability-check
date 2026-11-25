@@ -1,0 +1,150 @@
+name: SEC142 isolated independent-app decision prototype preview
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+# UNTRUSTED PR PREVIEW ONLY. This cannot attest an independent GitHub App.
+permissions:
+  contents: read
+
+jobs:
+  sec142-prototype-tests:
+    name: sec142-prototype-tests-not-a-required-gate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 4
+    steps:
+      - name: Checkout untrusted PR prototype with no persisted credentials
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Standard-library synthetic tests
+        run: python3 -m unittest discover -s security/sec142 -p 'test_*.py' -v
+      - name: Explicit enforcement boundary
+        run: |
+          echo "SEC142_SYNTHETIC_ONLY=TRUE"
+          echo "SEC142_EXTERNAL_GITHUB_APP_DEPLOYED=FALSE"
+          echo "SEC142_INDEPENDENT_ENFORCEMENT=NOT_ACCEPTED"
+
+      - name: RCA171 live public provider readback (read-only, optional)
+        id: rca171_live
+        continue-on-error: true
+        run: python3 security/sec142/rca171_provider_evidence.py --live
+      - name: RCA171 live verification state (never an enforcement gate)
+        if: always()
+        run: |
+          echo "RCA171_LIVE_STEP_OUTCOME=${{ steps.rca171_live.outcome }}"
+          echo "RCA171_PROVIDER_ATTESTATION=NOT_ACQUIRED"
+          echo "RCA171_NATIVE_NON_BYPASS=NOT_IMPLEMENTED"
+
+      - name: RCA172 live ruleset branch-scope audit (read-only, optional)
+        id: rca172_scope
+        continue-on-error: true
+        run: python3 security/sec142/rca172_ruleset_scope.py --live
+      - name: RCA172 evidence scope state (never an enforcement gate)
+        if: always()
+        run: |
+          echo "RCA172_SCOPE_STEP_OUTCOME=${{ steps.rca172_scope.outcome }}"
+          echo "RCA172_NATIVE_NON_BYPASS=NOT_IMPLEMENTED"
+
+      - name: RCA174 public mirror evidence (real Git read, optional)
+        id: rca174_mirror
+        continue-on-error: true
+        run: python3 security/sec142/rca174_public_mirror.py --live-public
+      - name: RCA174 mirror result classification
+        if: always()
+        run: |
+          echo "RCA174_PUBLIC_MIRROR_OUTCOME=${{ steps.rca174_mirror.outcome }}"
+          echo "RCA174_PRIVATE_MIRROR=NOT_TESTED"
+          echo "RCA174_PRIVATE_READ_GATE=NOT_DEPLOYED"
+          echo "RCA174_NATIVE_NON_BYPASS=NOT_IMPLEMENTED"
+
+      - name: RCA175 immutable read backend on actual public Git mirror (optional)
+        id: rca175_reader
+        continue-on-error: true
+        run: python3 security/sec142/rca175_mirror_read_backend.py --live-public
+      - name: RCA175 explicit non-production result
+        if: always()
+        run: |
+          echo "RCA175_PUBLIC_READ_BACKEND=${{ steps.rca175_reader.outcome }}"
+          echo "RCA175_PRIVATE_READ_MCP=NOT_DEPLOYED"
+          echo "RCA175_NATIVE_WRITE_DENIAL=NOT_ESTABLISHED"
+
+      - name: RCA176 real MCP SDK loopback (optional public-only)
+        id: rca176_mcp
+        continue-on-error: true
+        run: |
+          python3 -m venv "$RUNNER_TEMP/rca176-venv"
+          "$RUNNER_TEMP/rca176-venv/bin/python" -m pip install --disable-pip-version-check --no-input mcp==2.0.0
+          "$RUNNER_TEMP/rca176-venv/bin/python" security/sec142/rca176_loopback_mcp.py
+      - name: RCA176 transport verification state
+        if: always()
+        run: |
+          echo "RCA176_LOOPBACK_OUTCOME=${{ steps.rca176_mcp.outcome }}"
+          echo "RCA176_OAUTH=NOT_IMPLEMENTED"
+          echo "RCA176_NATIVE_NON_BYPASS=NOT_IMPLEMENTED"
+
+      - name: RCA177 signed resource server HTTP test (optional public-only)
+        id: rca177_auth
+        continue-on-error: true
+        run: |
+          "$RUNNER_TEMP/rca176-venv/bin/python" security/sec142/rca177_signed_resource_server.py
+      - name: RCA177 explicit authentication boundary
+        if: always()
+        run: |
+          echo "RCA177_SIGNED_RESOURCE_OUTCOME=${{ steps.rca177_auth.outcome }}"
+          echo "RCA177_EXTERNAL_OAUTH=NOT_CONNECTED"
+          echo "RCA177_NATIVE_NON_BYPASS=NOT_IMPLEMENTED"
+
+      - name: RCA178 local auth lifecycle HTTP test (optional public-only)
+        id: rca178_auth
+        continue-on-error: true
+        run: |
+          "$RUNNER_TEMP/rca176-venv/bin/python" security/sec142/rca178_auth_lifecycle.py
+      - name: RCA178 lifecycle boundary
+        if: always()
+        run: |
+          echo "RCA178_LIFECYCLE_OUTCOME=${{ steps.rca178_auth.outcome }}"
+          echo "RCA178_EXTERNAL_OAUTH=NOT_CONNECTED"
+          echo "RCA178_NATIVE_NON_BYPASS=NOT_IMPLEMENTED"
+
+      - name: RCA179 subprocess restart and state integrity (optional public-only)
+        id: rca179_restart
+        continue-on-error: true
+        run: |
+          "$RUNNER_TEMP/rca176-venv/bin/python" security/sec142/rca179_restart_integrity.py
+      - name: RCA179 restart boundary
+        if: always()
+        run: |
+          echo "RCA179_RESTART_OUTCOME=${{ steps.rca179_restart.outcome }}"
+          echo "RCA179_EXTERNAL_ANCHOR=NOT_DEPLOYED"
+          echo "RCA179_NATIVE_NON_BYPASS=NOT_IMPLEMENTED"
+
+  rca186-local-preview:
+    name: rca186-local-workerd-not-production
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    env:
+      WRANGLER_SEND_METRICS: "false"
+      CI: "true"
+    defaults:
+      run:
+        working-directory: security/rca186
+    steps:
+      - name: Checkout untrusted PR with no persisted credentials
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Install pinned Wrangler in ephemeral runner
+        run: |
+          node --version
+          npm install --no-save --package-lock=false --no-audit --no-fund wrangler@4.161.0
+          ./node_modules/.bin/wrangler --version
+      - name: Validate candidate bundle without uploading
+        run: |
+          ./node_modules/.bin/wrangler deploy --config wrangler.json --dry-run --outdir "$RUNNER_TEMP/rca186-bundle"
+          find "$RUNNER_TEMP/rca186-bundle" -type f -exec sha256sum {} +
+          echo RCA186_DRY_RUN=PASS
+      - name: Local workerd SQLite fixture and deny-only candidate
+        run: python3 -u test/run.py
