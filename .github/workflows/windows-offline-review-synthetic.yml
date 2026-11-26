@@ -39,28 +39,21 @@ jobs:
               'hosted-rpc-historical-local.test.ps1' = @{Size=9310;Hash='7ef5426d9d8a5aa35bf37170ddfea20dbd03b7fe585e4d3ed0a14101355c3c22'}
               'hosted-rpc-historical-test-launcher.ps1' = @{Size=4415;Hash='3177a7864af86ccb79ab1ab8e0db0e845db6195eb2add1f1f78d1ea303a3c5e6'}
           }
-          # Copy raw Git blob bytes, avoiding archive or working-tree text conversion.
+          # Fetch only the public revision's three pinned blobs, with no credentials.
           $source = Join-Path $stage 'synthetic\windows-offline-review'
           $null = New-Item -ItemType Directory -Path $source
-          $git = (Get-Command git.exe -CommandType Application).Source
           foreach ($name in $pins.Keys) {
               $spec = 'FETCH_HEAD:synthetic/windows-offline-review/' + $name
-              $size = git -C $repo cat-file -s $spec
-              if ($LASTEXITCODE -ne 0 -or $size -notmatch '^[0-9]+$' -or [long]$size -ne $pins[$name].Size) { throw ('RAW_BLOB_SIZE: ' + $name) }
-              $info = New-Object System.Diagnostics.ProcessStartInfo
-              $info.FileName = $git
-              $info.WorkingDirectory = $repo
-              $info.Arguments = 'cat-file blob ' + $spec
-              $info.UseShellExecute = $false
-              $info.RedirectStandardOutput = $true
-              $p = [Diagnostics.Process]::Start($info)
-              try {
-                  $file = Join-Path $source $name
-                  $f = [IO.File]::Open($file,[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::None)
-                  try { $p.StandardOutput.BaseStream.CopyTo($f) } finally { $f.Dispose() }
-                  $p.WaitForExit()
-                  if ($p.ExitCode -ne 0) { throw ('RAW_BLOB_READ: ' + $name) }
-              } finally { $p.Dispose() }
+              $blob = git -C $repo rev-parse --verify $spec
+              if ($LASTEXITCODE -ne 0 -or $blob -isnot [string] -or $blob -cnotmatch '^[a-f0-9]{40}$') { throw ('BLOB_ID: ' + $name) }
+              $uri = 'https://api.github.com/repos/taku077/github-runner-availability-check/git/blobs/' + $blob
+              $response = Invoke-RestMethod -Method Get -Uri $uri -Headers @{Accept='application/vnd.github+json';'User-Agent'='offline-synthetic-ci';'X-GitHub-Api-Version'='2022-11-28'} -TimeoutSec 30
+              if ($response.sha -cne $blob -or $response.encoding -cne 'base64' -or $response.size -ne $pins[$name].Size -or $response.content -isnot [string] -or $response.content.Length -gt 65536) { throw ('BLOB_RESPONSE: ' + $name) }
+              $bytes = [Convert]::FromBase64String($response.content)
+              if ($bytes.Length -ne $pins[$name].Size) { throw ('BLOB_BYTES: ' + $name) }
+              $file = Join-Path $source $name
+              $f = [IO.File]::Open($file,[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::None)
+              try { $f.Write($bytes,0,$bytes.Length) } finally { $f.Dispose() }
           }
           $items = @(Get-ChildItem -LiteralPath $source -Force)
           if ($items.Count -ne $pins.Count) { throw 'SOURCE_COUNT' }
