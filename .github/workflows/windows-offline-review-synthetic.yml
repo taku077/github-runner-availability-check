@@ -1,0 +1,73 @@
+# Inactive review draft. Do not publish or install in .github/workflows without owner authorization.
+# Only the three approved, hash-pinned generic scripts may be staged. No real evidence or pins.
+name: Windows offline review synthetic acceptance
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/windows-offline-review-synthetic.yml'
+      - 'synthetic/windows-offline-review/**'
+permissions:
+  contents: read
+jobs:
+  synthetic-review:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: windows-2022
+    timeout-minutes: 5
+    steps:
+      - name: Fetch public test revision, pin sources, and run synthetic suite
+        shell: powershell
+        env:
+          GIT_TERMINAL_PROMPT: '0'
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Set-StrictMode -Version 2
+          if ($env:GITHUB_REPOSITORY -cne 'taku077/github-runner-availability-check' -or $env:GITHUB_REF -cnotmatch '^refs/pull/[0-9]+/merge$' -or $env:GITHUB_SHA -cnotmatch '^[a-f0-9]{40}$') { throw 'UNEXPECTED_CONTEXT' }
+          $root = Join-Path $env:RUNNER_TEMP ('offline-review-' + [Guid]::NewGuid().ToString('N'))
+          $repo = Join-Path $root 'repo'
+          $stage = Join-Path $root 'stage'
+          $test = Join-Path $root 'test'
+          foreach ($dir in @($root,$repo,$stage,$test)) { $null = New-Item -ItemType Directory -Path $dir }
+          git -C $repo init --quiet
+          if ($LASTEXITCODE -ne 0) { throw 'GIT_INIT' }
+          git -C $repo -c credential.helper= -c http.extraHeader= fetch --quiet --no-tags --depth=1 'https://github.com/taku077/github-runner-availability-check.git' $env:GITHUB_REF
+          if ($LASTEXITCODE -ne 0) { throw 'GIT_FETCH' }
+          $commit = git -C $repo rev-parse FETCH_HEAD
+          if ($LASTEXITCODE -ne 0 -or $commit -cne $env:GITHUB_SHA) { throw 'REVISION_MISMATCH' }
+          $pins = [ordered]@{
+              'hosted-rpc-historical-local.ps1' = @{Size=15824;Hash='c11a4649e7da615ed5ab78f47bd8ca38c032f47998af337c22c32daaf27df2fe'}
+              'hosted-rpc-historical-local.test.ps1' = @{Size=9310;Hash='7ef5426d9d8a5aa35bf37170ddfea20dbd03b7fe585e4d3ed0a14101355c3c22'}
+              'hosted-rpc-historical-test-launcher.ps1' = @{Size=4415;Hash='3177a7864af86ccb79ab1ab8e0db0e845db6195eb2add1f1f78d1ea303a3c5e6'}
+          }
+          # Fetch only the public revision's three pinned blobs, with no credentials.
+          $source = Join-Path $stage 'synthetic\windows-offline-review'
+          $null = New-Item -ItemType Directory -Path $source
+          foreach ($name in $pins.Keys) {
+              $spec = 'FETCH_HEAD:synthetic/windows-offline-review/' + $name
+              $blob = git -C $repo rev-parse --verify $spec
+              if ($LASTEXITCODE -ne 0 -or $blob -isnot [string] -or $blob -cnotmatch '^[a-f0-9]{40}$') { throw ('BLOB_ID: ' + $name) }
+              $uri = 'https://api.github.com/repos/taku077/github-runner-availability-check/git/blobs/' + $blob
+              $response = Invoke-RestMethod -Method Get -Uri $uri -Headers @{Accept='application/vnd.github+json';'User-Agent'='offline-synthetic-ci';'X-GitHub-Api-Version'='2022-11-28'} -TimeoutSec 30
+              if ($response.sha -cne $blob -or $response.encoding -cne 'base64' -or $response.size -ne $pins[$name].Size -or $response.content -isnot [string] -or $response.content.Length -gt 65536) { throw ('BLOB_RESPONSE: ' + $name) }
+              $bytes = [Convert]::FromBase64String($response.content)
+              if ($bytes.Length -ne $pins[$name].Size) { throw ('BLOB_BYTES: ' + $name) }
+              $file = Join-Path $source $name
+              $f = [IO.File]::Open($file,[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::None)
+              try { $f.Write($bytes,0,$bytes.Length) } finally { $f.Dispose() }
+          }
+          $items = @(Get-ChildItem -LiteralPath $source -Force)
+          if ($items.Count -ne $pins.Count) { throw 'SOURCE_COUNT' }
+          foreach ($name in $pins.Keys) {
+              $file = Join-Path $source $name
+              $item = Get-Item -LiteralPath $file -Force
+              if ($item -isnot [IO.FileInfo] -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 -or $item.Length -ne $pins[$name].Size) { throw ('SOURCE_SIZE: ' + $name + ' actual=' + $item.Length) }
+              if ((Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash.ToLowerInvariant() -cne $pins[$name].Hash) { throw ('SOURCE_HASH: ' + $name) }
+          }
+          $tokens = $null; $parseErrors = $null
+          $launcher = Join-Path $source 'hosted-rpc-historical-test-launcher.ps1'
+          $null = [System.Management.Automation.Language.Parser]::ParseFile($launcher,[ref]$tokens,[ref]$parseErrors)
+          if (@($parseErrors).Count -ne 0) { throw 'LAUNCHER_PARSE' }
+          $lines = @(& $launcher -TestRoot $test)
+          $result = ConvertFrom-Json -InputObject ($lines -join [Environment]::NewLine)
+          if ($result.Status -cne 'SYNTHETIC_TEST_PASS' -or $result.SelfTestCases -ne 17 -or $result.IntegrationCases -ne 21 -or $result.Production -cne 'BLOCKED' -or $result.WriteAllowed -ne $false -or $result.Live -ne $false) { throw 'SUITE_NOT_PASSED' }
+          Write-Output 'SYNTHETIC ACCEPTANCE: 38/38 PASS; PRODUCTION BLOCKED'
