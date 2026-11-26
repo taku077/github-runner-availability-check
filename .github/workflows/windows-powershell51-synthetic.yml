@@ -1,0 +1,119 @@
+name: Windows PowerShell 5.1 synthetic compatibility
+on:
+  pull_request:
+    branches: [main]
+    paths: ['.github/workflows/windows-powershell51-synthetic.yml']
+permissions:
+  contents: read
+jobs:
+  primitive-tests:
+    runs-on: windows-2022
+    timeout-minutes: 5
+    steps:
+      - name: Verify synthetic language and file primitives
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Set-StrictMode -Version 2
+          $n = 0
+          function Check([string]$name,[bool]$pass) {
+              if (-not $pass) { throw "FAIL: $name" }
+              $script:n++
+              Write-Host "PASS: $name"
+          }
+          function Value($obj,[string]$name) {
+              $p = @($obj.PSObject.Properties | Where-Object { $_.Name -ceq $name })
+              if ($p.Count -ne 1) { throw 'missing field' }
+              return ,$p[0].Value
+          }
+          Check 'desktop 5.1' ($PSVersionTable.PSEdition -eq 'Desktop' -and $PSVersionTable.PSVersion.Major -eq 5 -and $PSVersionTable.PSVersion.Minor -eq 1)
+          $obj = ConvertFrom-Json '{"empty":[],"one":[{"x":1}],"flag":false,"nil":null,"time":"2020-01-01T00:00:00.1234567Z","number":1,"str":"1"}'
+          $a = Value $obj 'empty'; $b = Value $obj 'one'
+          Check 'empty array retained' ($a -is [array] -and $a.Length -eq 0)
+          Check 'single object array retained' ($b -is [array] -and $b.Length -eq 1 -and $b[0].x -eq 1)
+          Check 'boolean retained' ((Value $obj 'flag') -is [bool] -and -not (Value $obj 'flag'))
+          Check 'null retained' ($null -eq (Value $obj 'nil'))
+          Check 'number vs string' ((Value $obj 'number') -isnot [string] -and (Value $obj 'str') -is [string])
+          $t = Value $obj 'time'
+          Check 'timestamp string retained' ($t -is [string])
+          $dt = [DateTimeOffset]::ParseExact($t,"yyyy-MM-dd'T'HH:mm:ss.fffffff'Z'",[Globalization.CultureInfo]::InvariantCulture,[Globalization.DateTimeStyles]::AssumeUniversal)
+          Check 'seven digit timestamp' ($dt.ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss.fffffff'Z'") -ceq $t)
+          $set = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+          Check 'duplicate name detector' ($set.Add('key') -and -not $set.Add('KEY'))
+          $rx = [regex]::new('\G\s*(?<t>[a-z]+|[0-9]+)',[Text.RegularExpressions.RegexOptions]::CultureInvariant,[TimeSpan]::FromSeconds(2))
+          $m = $rx.Match('abc 123',0); $m2 = $rx.Match('abc 123',$m.Length)
+          Check 'anchored regex' ($m.Groups['t'].Value -ceq 'abc' -and $m2.Groups['t'].Value -ceq '123' -and -not $rx.Match('!abc',0).Success)
+          $utf = [Text.UTF8Encoding]::new($false,$true)
+          $rejected = $false
+          try { $null = $utf.GetString([byte[]]@(255)) } catch { $rejected = $true }
+          Check 'invalid UTF8 rejected' $rejected
+          $sha = [Security.Cryptography.SHA256]::Create()
+          try { $digest = ([BitConverter]::ToString($sha.ComputeHash($utf.GetBytes('abc')))).Replace('-','').ToLowerInvariant() } finally { $sha.Dispose() }
+          Check 'known SHA256 vector' ($digest -ceq 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad')
+          $root = Join-Path $env:RUNNER_TEMP ('synthetic-'+[Guid]::NewGuid().ToString('N'))
+          $null = New-Item -ItemType Directory -Path $root
+          $file = Join-Path $root 'sample.json'
+          $f = [IO.File]::Open($file,[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::None)
+          try { $bytes = $utf.GetBytes('{"ok":true}'); $f.Write($bytes,0,$bytes.Length); $f.Flush($true) } finally { $f.Dispose() }
+          $rejected = $false
+          try { $f = [IO.File]::Open($file,[IO.FileMode]::CreateNew); $f.Dispose() } catch { $rejected = $true }
+          Check 'existing output not overwritten' $rejected
+          Check 'output remains intact' ([IO.File]::ReadAllText($file) -ceq '{"ok":true}')
+          Check 'expected case count' ($n -eq 14)
+          Write-Host "TOTAL: $n PASS (primitive compatibility only; no application acceptance)"
+
+      - name: Verify synthetic time and path safety primitives
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Set-StrictMode -Version 2
+          $n = 0
+          function Check([string]$name,[bool]$pass) {
+              if (-not $pass) { throw "FAIL: $name" }
+              $script:n++
+              Write-Host "PASS: $name"
+          }
+          $culture = [Globalization.CultureInfo]::InvariantCulture
+          $style = [Globalization.DateTimeStyles]::AssumeUniversal
+          $a = [DateTimeOffset]::Parse('2020-01-01T00:00:00.123456Z',$culture,$style)
+          $b = [DateTimeOffset]::Parse('2020-01-01T00:00:00.1234567Z',$culture,$style)
+          Check 'six digit UTC' ($a.ToUniversalTime().ToString('o') -ceq '2020-01-01T00:00:00.1234560+00:00')
+          Check 'submillisecond order' ($b -gt $a)
+          $bad = $false
+          try { $null = [DateTimeOffset]::Parse('2020-02-30T00:00:00Z',$culture,$style) } catch { $bad = $true }
+          Check 'invalid calendar rejected' $bad
+          $set = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+          Check 'duplicate identifier rejected' ($set.Add('synthetic-id') -and -not $set.Add('synthetic-id'))
+          $obj = ConvertFrom-Json '{"flag":true,"string":"true"}'
+          Check 'boolean type distinguished' ($obj.flag -is [bool] -and $obj.string -is [string])
+          $root = Join-Path $env:RUNNER_TEMP ('guards-'+[Guid]::NewGuid().ToString('N'))
+          $real = Join-Path $root 'real'
+          $child = Join-Path $real 'child'
+          $alias = Join-Path $root 'alias'
+          $null = New-Item -ItemType Directory -Path $root
+          $null = New-Item -ItemType Directory -Path $real
+          $null = New-Item -ItemType Directory -Path $child
+          $null = New-Item -ItemType Junction -Path $alias -Target $real
+          Check 'junction attribute detected' (((Get-Item -LiteralPath $alias -Force).Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0)
+          $cursor = Get-Item -LiteralPath (Join-Path $alias 'child') -Force
+          $found = $false
+          while ($null -ne $cursor) {
+              $item = Get-Item -LiteralPath $cursor.FullName -Force
+              if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { $found = $true; break }
+              $cursor = $item.Parent
+          }
+          Check 'ancestor junction detected' $found
+          $drive = [IO.DriveInfo]::new([IO.Path]::GetPathRoot($real))
+          Check 'fixed drive recognized' ($drive.DriveType -eq [IO.DriveType]::Fixed)
+          $file = Join-Path $real 'sample.txt'
+          [IO.File]::WriteAllText($file,'synthetic')
+          $before = (Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash
+          $handle = [IO.File]::Open($file,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::Read)
+          try {
+              $bad = $false
+              try { $writer = [IO.File]::Open($file,[IO.FileMode]::Open,[IO.FileAccess]::Write,[IO.FileShare]::ReadWrite); $writer.Dispose() } catch { $bad = $true }
+              Check 'concurrent writer denied' $bad
+          } finally { $handle.Dispose() }
+          Check 'synthetic original unchanged' ((Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash -ceq $before)
+          if ($n -ne 10) { throw 'unexpected test count' }
+          Write-Host "TOTAL: $n PASS (time and path primitives only; no application acceptance)"
