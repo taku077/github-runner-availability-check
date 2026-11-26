@@ -1,0 +1,46 @@
+name: DEVSEC G1 public Git recovery verification
+on:
+  pull_request:
+    branches: [main]
+    paths: ['.github/workflows/devsec-g1-public-restore.yml']
+permissions:
+  contents: read
+jobs:
+  public-restore:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Verify actual public mirror and isolated bundle restore
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = 'taku077/github-runner-availability-check'
+          unset GITHUB_TOKEN GH_TOKEN GIT_ASKPASS SSH_ASKPASS SSH_AUTH_SOCK GIT_CONFIG_COUNT
+          export GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null GIT_TERMINAL_PROMPT=0 GIT_NO_REPLACE_OBJECTS=1 GIT_LFS_SKIP_SMUDGE=1
+          root="$(mktemp -d "$RUNNER_TEMP/devsec-g1.XXXXXXXX")"
+          git -c credential.helper= -c http.extraHeader= clone --quiet --mirror -- 'https://github.com/taku077/github-runner-availability-check.git' "$root/source.git"
+          git -C "$root/source.git" fsck --full --no-reflogs
+          main="$(git -C "$root/source.git" rev-parse --verify refs/heads/main)"
+          test "$main" = '1b33f359b1079d0c31fc964083991fd875cda304'
+          git -C "$root/source.git" for-each-ref --format='%(refname) %(objectname)' | LC_ALL=C sort > "$root/refs-before.txt"
+          git -C "$root/source.git" rev-list --objects --all --no-object-names | LC_ALL=C sort -u > "$root/objects-before.txt"
+          test -s "$root/refs-before.txt"
+          test -s "$root/objects-before.txt"
+          git -C "$root/source.git" bundle create "$root/recovery.bundle" --all
+          size="$(stat -c %s "$root/recovery.bundle")"
+          test "$size" -gt 0
+          test "$size" -le 50331648
+          digest="$(sha256sum "$root/recovery.bundle" | cut -d ' ' -f 1)"
+          git init --quiet --bare "$root/empty.git"
+          git -C "$root/empty.git" bundle verify "$root/recovery.bundle"
+          git clone --quiet --mirror "$root/recovery.bundle" "$root/restored.git"
+          git -C "$root/restored.git" fsck --full --no-reflogs
+          git -C "$root/restored.git" for-each-ref --format='%(refname) %(objectname)' | LC_ALL=C sort > "$root/refs-after.txt"
+          git -C "$root/restored.git" rev-list --objects --all --no-object-names | LC_ALL=C sort -u > "$root/objects-after.txt"
+          cmp "$root/refs-before.txt" "$root/refs-after.txt"
+          cmp "$root/objects-before.txt" "$root/objects-after.txt"
+          test "$(git -C "$root/restored.git" rev-parse --verify refs/heads/main)" = "$main"
+          test "$(sha256sum "$root/recovery.bundle" | cut -d ' ' -f 1)" = "$digest"
+          printf 'PUBLIC_RESTORE_PASS main=%s refs=%s reachable_objects=%s bundle_bytes=%s sha256=%s\n' "$main" "$(wc -l < "$root/refs-after.txt")" "$(wc -l < "$root/objects-after.txt")" "$size" "$digest"
+          echo 'EPHEMERAL_ONLY; PRIVATE_RESTORE_NOT_RUN; INDEPENDENT_CUSTODY_NOT_ESTABLISHED; PRODUCTION_BLOCKED'
